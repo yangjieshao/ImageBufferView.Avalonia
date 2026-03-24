@@ -1,11 +1,12 @@
-﻿using Avalonia.Controls;
+﻿using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using System;
 using System.IO;
 
-namespace Avalonia.ImageBufferView;
+namespace ImageBufferView.Avalonia;
 
 public partial class ImageBufferView : Control
 {

@@ -1,7 +1,8 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 
-namespace Avalonia.ImageBufferView.Sample.Views
+namespace ImageBufferView.Avalonia.Sample.Views
 {
     public partial class MainWindow : Window
     {

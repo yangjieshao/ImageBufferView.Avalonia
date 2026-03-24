@@ -1,7 +1,9 @@
-﻿using Avalonia.ReactiveUI;
+﻿using Avalonia;
+using ImageBufferView.Avalonia.Sample;
+using ReactiveUI.Avalonia;
 using System;
 
-namespace Avalonia.ImageBufferView.Sample
+namespace ImageBufferView.Avalonia.Sample
 {
     internal class Program
     {
@@ -16,7 +18,12 @@ namespace Avalonia.ImageBufferView.Sample
         public static AppBuilder BuildAvaloniaApp()
             => AppBuilder.Configure<App>()
                 .UsePlatformDetect()
+                .With(new Win32PlatformOptions())
                 .LogToTrace()
-                .UseReactiveUI();
+                .UseReactiveUI(rxui =>
+                {
+                    // Optional: add custom registration here via rxui.WithRegistration(...)
+                })
+                .RegisterReactiveUIViewsFromEntryAssembly();
     }
 }

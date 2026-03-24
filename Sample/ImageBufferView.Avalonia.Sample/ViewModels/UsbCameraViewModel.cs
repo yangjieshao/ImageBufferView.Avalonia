@@ -1,4 +1,5 @@
-﻿using Avalonia.Threading;
+﻿using Avalonia.Controls;
+using Avalonia.Threading;
 using DynamicData;
 using FlashCap;
 using ReactiveUI;
@@ -10,7 +11,7 @@ using System.Linq;
 using System.Reactive.Linq;
 using System.Threading.Tasks;
 
-namespace Avalonia.ImageBufferView.Sample.ViewModels
+namespace ImageBufferView.Avalonia.Sample.ViewModels
 {
     /// <summary>
     /// 摄像头流配置
@@ -46,7 +47,7 @@ namespace Avalonia.ImageBufferView.Sample.ViewModels
             DeviceList.Add(null);
             Device = DeviceList.FirstOrDefault();
 
-            if (Avalonia.Controls.Design.IsDesignMode)
+            if (Design.IsDesignMode)
             {
                 return;
             }
@@ -184,7 +185,7 @@ namespace Avalonia.ImageBufferView.Sample.ViewModels
         /// <returns> </returns>
         private void OnDeviceListChanged(CaptureDeviceDescriptor? device)
         {
-            if (Avalonia.Controls.Design.IsDesignMode)
+            if (Design.IsDesignMode)
             {
                 return;
             }
@@ -231,7 +232,7 @@ namespace Avalonia.ImageBufferView.Sample.ViewModels
         /// <param name="characteristicsModel"> </param>
         private async void OnCharacteristicsChangedAsync(VideoCharacteristicModel? characteristicsModel)
         {
-            if (Avalonia.Controls.Design.IsDesignMode)
+            if (Design.IsDesignMode)
             {
                 return;
             }

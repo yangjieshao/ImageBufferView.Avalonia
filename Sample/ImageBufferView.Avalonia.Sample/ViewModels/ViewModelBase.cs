@@ -1,6 +1,6 @@
 ﻿using ReactiveUI;
 
-namespace Avalonia.ImageBufferView.Sample.ViewModels
+namespace ImageBufferView.Avalonia.Sample.ViewModels
 {
     public class ViewModelBase : ReactiveObject
     {

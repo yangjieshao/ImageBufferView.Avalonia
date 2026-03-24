@@ -11,11 +11,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		README.md = README.md
 	EndProjectSection
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Avalonia.ImageBufferView", "Avalonia.ImageBufferView\Avalonia.ImageBufferView.csproj", "{D6C689FF-6D2A-4DEB-BA24-93E7085CF496}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ImageBufferView.Avalonia", "ImageBufferView.Avalonia\ImageBufferView.Avalonia.csproj", "{D6C689FF-6D2A-4DEB-BA24-93E7085CF496}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Sample", "Sample", "{47186386-D20C-4107-BA0B-DE8DC4E24CF0}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Avalonia.ImageBufferView.Sample", "Sample\Avalonia.ImageBufferView.Sample\Avalonia.ImageBufferView.Sample.csproj", "{85A1C45D-C30F-4187-B565-F64663EF35C4}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ImageBufferView.Avalonia.Sample", "Sample\ImageBufferView.Avalonia.Sample\ImageBufferView.Avalonia.Sample.csproj", "{85A1C45D-C30F-4187-B565-F64663EF35C4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

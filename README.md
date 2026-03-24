@@ -1,8 +1,8 @@
-# Avalonia.ImageBufferView
+# ImageBufferView.Avalonia
 Avalonia 图片二进制流显示 (主要用于显示摄像头画面)
 
 ```
-    xmlns:ibv="clr-namespace:Avalonia.ImageBufferView;assembly=Avalonia.ImageBufferView"
+    xmlns:ibv="clr-namespace:ImageBufferView.Avalonia;assembly=ImageBufferView.Avalonia"
 ```
 
 ```

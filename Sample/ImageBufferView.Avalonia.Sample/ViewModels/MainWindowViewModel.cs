@@ -6,7 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Avalonia.ImageBufferView.Sample.ViewModels
+namespace ImageBufferView.Avalonia.Sample.ViewModels
 {
     public class MainWindowViewModel : ViewModelBase
     {
@@ -61,11 +61,8 @@ namespace Avalonia.ImageBufferView.Sample.ViewModels
 
         public void Clean()
         {
-            if (CancellationTokenSource is not null)
-            {
-                CancellationTokenSource.Cancel();
-                CancellationTokenSource = null;
-            }
+            CancellationTokenSource?.Cancel();
+            CancellationTokenSource = null;
             ImageBuffer = default;
         }
 

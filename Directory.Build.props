@@ -12,13 +12,13 @@
         <RepositoryType>git</RepositoryType>
         <RepositoryUrl>https://github.com/yangjieshao/Avalonia.ImageBufferView.git</RepositoryUrl>
 
-        <RootNamespace>Avalonia.ImageBufferView</RootNamespace>
+        <RootNamespace>ImageBufferView.Avalonia</RootNamespace>
         <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <NoWarn>$(NoWarn);CS1570;CS1591</NoWarn>
 
-        <Product>Avalonia.ImageBufferView</Product>
-        <Trademark>Avalonia.ImageBufferView</Trademark>
+        <Product>ImageBufferView.Avalonia</Product>
+        <Trademark>ImageBufferView.Avalonia</Trademark>
         <Copyright>Copyright (c) </Copyright>
         <Description>Avalonia 图片二进制流显示 (主要用于显示摄像头画面).</Description>
 
