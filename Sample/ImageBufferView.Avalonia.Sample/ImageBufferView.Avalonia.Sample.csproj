@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
-        <TargetFramework>net8.0</TargetFramework>
+        <TargetFramework>net9.0</TargetFramework>
         <Nullable>enable</Nullable>
         <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
         <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -19,7 +19,7 @@
         <PackageReference Include="FlashCap" Version="1.10.0" />
 		<PackageReference Include="Avalonia.Desktop" Version="11.3.12" />
 		<PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" />
-		<PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.1.1" />
+		<!--<PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.1.1" />-->
         <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
         <PackageReference Condition="'$(Configuration)' == 'Debug'" Include="Avalonia.Diagnostics" Version="11.3.12" />
         <PackageReference Include="ReactiveUI.Avalonia" Version="11.4.12" />

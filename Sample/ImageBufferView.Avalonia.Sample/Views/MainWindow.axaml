@@ -118,6 +118,7 @@
                 VerticalAlignment="Stretch"
                 DefaultBackground="Black"
                 ImageBuffer="{Binding ImageBuffer}"
+                InterpolationMode="LowQuality"
                 Stretch="None"
                 StretchDirection="Both" />
 
@@ -126,6 +127,7 @@
                 Grid.Column="2"
                 Bitmap="{Binding Bitmap, ElementName=FirstPic}"
                 DefaultBackground="AliceBlue"
+                InterpolationMode="LowQuality"
                 Stretch="None"
                 StretchDirection="UpOnly" />
 
@@ -134,6 +136,7 @@
                 Grid.Column="3"
                 Bitmap="{Binding Bitmap, ElementName=FirstPic}"
                 DefaultBackground="BurlyWood"
+                InterpolationMode="LowQuality"
                 Stretch="None"
                 StretchDirection="DownOnly" />
 
@@ -142,6 +145,7 @@
                 Grid.Column="1"
                 Bitmap="{Binding Bitmap, ElementName=FirstPic}"
                 DefaultBackground="Chocolate"
+                InterpolationMode="LowQuality"
                 Stretch="Fill"
                 StretchDirection="Both" />
 
@@ -149,6 +153,7 @@
                 Grid.Row="2"
                 Grid.Column="2"
                 Bitmap="{Binding Bitmap, ElementName=FirstPic}"
+                InterpolationMode="LowQuality"
                 Stretch="Fill"
                 StretchDirection="UpOnly">
                 <ibv:ImageBufferView.DefaultBackground>
@@ -160,6 +165,7 @@
                 Grid.Row="2"
                 Grid.Column="3"
                 Bitmap="{Binding Bitmap, ElementName=FirstPic}"
+                InterpolationMode="LowQuality"
                 Stretch="Fill"
                 StretchDirection="DownOnly">
                 <ibv:ImageBufferView.DefaultBackground>
@@ -172,6 +178,7 @@
                 Grid.Column="1"
                 Bitmap="{Binding Bitmap, ElementName=FirstPic}"
                 DefaultBackground="DarkGray"
+                InterpolationMode="LowQuality"
                 Stretch="Uniform"
                 StretchDirection="Both" />
 
@@ -180,6 +187,7 @@
                 Grid.Column="2"
                 Bitmap="{Binding Bitmap, ElementName=FirstPic}"
                 DefaultBackground="Gainsboro"
+                InterpolationMode="LowQuality"
                 Stretch="Uniform"
                 StretchDirection="UpOnly" />
 
@@ -188,6 +196,7 @@
                 Grid.Column="3"
                 Bitmap="{Binding Bitmap, ElementName=FirstPic}"
                 DefaultBackground="DarkGreen"
+                InterpolationMode="LowQuality"
                 Stretch="Uniform"
                 StretchDirection="DownOnly" />
 
@@ -196,6 +205,7 @@
                 Grid.Column="1"
                 Bitmap="{Binding Bitmap, ElementName=FirstPic}"
                 DefaultBackground="FloralWhite"
+                InterpolationMode="LowQuality"
                 Stretch="UniformToFill"
                 StretchDirection="Both" />
 
@@ -204,6 +214,7 @@
                 Grid.Column="2"
                 Bitmap="{Binding Bitmap, ElementName=FirstPic}"
                 DefaultBackground="Linen"
+                InterpolationMode="LowQuality"
                 Stretch="UniformToFill"
                 StretchDirection="UpOnly" />
 
@@ -211,6 +222,7 @@
                 Grid.Row="4"
                 Grid.Column="3"
                 Bitmap="{Binding Bitmap, ElementName=FirstPic}"
+                InterpolationMode="LowQuality"
                 Stretch="UniformToFill"
                 StretchDirection="DownOnly" />
         </Grid>
@@ -226,6 +238,7 @@
                 Height="300"
                 Margin="5"
                 ImageBuffer="{Binding UsbCamera.CurrentImageBuffer}"
+                InterpolationMode="HighQuality"
                 Stretch="UniformToFill"
                 StretchDirection="Both">
                 <ibv:ImageBufferView.DefaultBackground>
