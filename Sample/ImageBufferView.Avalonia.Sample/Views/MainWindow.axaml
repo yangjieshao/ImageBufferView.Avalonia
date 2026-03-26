@@ -117,10 +117,8 @@
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
                 DefaultBackground="Black"
-                EnablePreScale="True"
                 ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
-                SourceResolutionHint="EnableReuse"
                 Stretch="None"
                 StretchDirection="Both" />
 
@@ -128,10 +126,8 @@
                 Grid.Row="1"
                 Grid.Column="2"
                 DefaultBackground="AliceBlue"
-                EnablePreScale="True"
-                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
-                SourceResolutionHint="EnableReuse"
+                SourceView="{Binding ElementName=FirstPic}"
                 Stretch="None"
                 StretchDirection="UpOnly" />
 
@@ -139,10 +135,8 @@
                 Grid.Row="1"
                 Grid.Column="3"
                 DefaultBackground="BurlyWood"
-                EnablePreScale="True"
-                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
-                SourceResolutionHint="EnableReuse"
+                SourceView="{Binding ElementName=FirstPic}"
                 Stretch="None"
                 StretchDirection="DownOnly" />
 
@@ -150,20 +144,16 @@
                 Grid.Row="2"
                 Grid.Column="1"
                 DefaultBackground="Chocolate"
-                EnablePreScale="True"
-                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
-                SourceResolutionHint="EnableReuse"
+                SourceView="{Binding ElementName=FirstPic}"
                 Stretch="Fill"
                 StretchDirection="Both" />
 
             <ibv:ImageBufferView
                 Grid.Row="2"
                 Grid.Column="2"
-                EnablePreScale="True"
-                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
-                SourceResolutionHint="EnableReuse"
+                SourceView="{Binding ElementName=FirstPic}"
                 Stretch="Fill"
                 StretchDirection="UpOnly">
                 <ibv:ImageBufferView.DefaultBackground>
@@ -174,10 +164,8 @@
             <ibv:ImageBufferView
                 Grid.Row="2"
                 Grid.Column="3"
-                EnablePreScale="True"
-                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
-                SourceResolutionHint="EnableReuse"
+                SourceView="{Binding ElementName=FirstPic}"
                 Stretch="Fill"
                 StretchDirection="DownOnly">
                 <ibv:ImageBufferView.DefaultBackground>
@@ -189,10 +177,8 @@
                 Grid.Row="3"
                 Grid.Column="1"
                 DefaultBackground="DarkGray"
-                EnablePreScale="True"
-                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
-                SourceResolutionHint="EnableReuse"
+                SourceView="{Binding ElementName=FirstPic}"
                 Stretch="Uniform"
                 StretchDirection="Both" />
 
@@ -200,10 +186,8 @@
                 Grid.Row="3"
                 Grid.Column="2"
                 DefaultBackground="Gainsboro"
-                EnablePreScale="True"
-                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
-                SourceResolutionHint="EnableReuse"
+                SourceView="{Binding ElementName=FirstPic}"
                 Stretch="Uniform"
                 StretchDirection="UpOnly" />
 
@@ -211,10 +195,8 @@
                 Grid.Row="3"
                 Grid.Column="3"
                 DefaultBackground="DarkGreen"
-                EnablePreScale="True"
-                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
-                SourceResolutionHint="EnableReuse"
+                SourceView="{Binding ElementName=FirstPic}"
                 Stretch="Uniform"
                 StretchDirection="DownOnly" />
 
@@ -222,10 +204,8 @@
                 Grid.Row="4"
                 Grid.Column="1"
                 DefaultBackground="FloralWhite"
-                EnablePreScale="True"
-                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
-                SourceResolutionHint="EnableReuse"
+                SourceView="{Binding ElementName=FirstPic}"
                 Stretch="UniformToFill"
                 StretchDirection="Both" />
 
@@ -233,20 +213,16 @@
                 Grid.Row="4"
                 Grid.Column="2"
                 DefaultBackground="Linen"
-                EnablePreScale="True"
-                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
-                SourceResolutionHint="EnableReuse"
+                SourceView="{Binding ElementName=FirstPic}"
                 Stretch="UniformToFill"
                 StretchDirection="UpOnly" />
 
             <ibv:ImageBufferView
                 Grid.Row="4"
                 Grid.Column="3"
-                EnablePreScale="True"
-                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
-                SourceResolutionHint="EnableReuse"
+                SourceView="{Binding ElementName=FirstPic}"
                 Stretch="UniformToFill"
                 StretchDirection="DownOnly" />
         </Grid>
@@ -261,10 +237,8 @@
                 Width="300"
                 Height="300"
                 Margin="5"
-                EnablePreScale="True"
                 ImageBuffer="{Binding UsbCamera.CurrentImageBuffer}"
                 InterpolationMode="HighQuality"
-                SourceResolutionHint="EnableReuse"
                 Stretch="UniformToFill"
                 StretchDirection="Both">
                 <ibv:ImageBufferView.DefaultBackground>

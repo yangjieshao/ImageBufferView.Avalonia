@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Reactive;
 using Avalonia.Threading;
 using SkiaSharp;
 using System;
@@ -28,6 +29,7 @@ public partial class ImageBufferView : Control
         BitmapProperty.Changed.AddClassHandler<ImageBufferView>(BitmapChanged);
         ImageBufferProperty.Changed.AddClassHandler<ImageBufferView>(ImageBufferChanged);
         InterpolationModeProperty.Changed.AddClassHandler<ImageBufferView>(InterpolationModeChanged);
+        SourceViewProperty.Changed.AddClassHandler<ImageBufferView>(SourceViewChanged);
     }
 
     public ImageBufferView() : base()
@@ -67,10 +69,32 @@ public partial class ImageBufferView : Control
     public static readonly StyledProperty<Bitmap?> BitmapProperty =
         AvaloniaProperty.Register<ImageBufferView, Bitmap?>(nameof(Bitmap));
 
+    /// <summary>
+    /// 当前显示的 Bitmap（只读）
+    /// </summary>
     public Bitmap? Bitmap
     {
         get => GetValue(BitmapProperty);
-        set => SetValue(BitmapProperty, value);
+        private set => SetValue(BitmapProperty, value);
+    }
+
+    public static readonly StyledProperty<ImageBufferView?> SourceViewProperty =
+        AvaloniaProperty.Register<ImageBufferView, ImageBufferView?>(nameof(SourceView));
+
+    /// <summary>
+    /// 源 ImageBufferView，用于复用其他控件的 Bitmap
+    /// 设置后会自动同步源控件的 Bitmap
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// &lt;ibv:ImageBufferView Name="FirstPic" ImageBuffer="{Binding ImageBuffer}" /&gt;
+    /// &lt;ibv:ImageBufferView SourceView="{Binding ElementName=FirstPic}" /&gt;
+    /// </code>
+    /// </example>
+    public ImageBufferView? SourceView
+    {
+        get => GetValue(SourceViewProperty);
+        set => SetValue(SourceViewProperty, value);
     }
 
     public static readonly StyledProperty<IBrush?> DefaultBackgroundProperty =
@@ -96,37 +120,21 @@ public partial class ImageBufferView : Control
     }
 
     /// <summary>
-    /// 是否启用 SkiaSharp 预缩放优化
-    /// 当输入图片与渲染区域大小不一致时，在解码阶段预先缩放可显著提升渲染性能
+    /// 是否启用性能优化（默认启用）
+    /// 包含预缩放优化和缓冲区复用，可显著提升渲染性能（10-50%）
+    /// 自动检测分辨率变化并智能处理各种场景
     /// </summary>
-    public static readonly StyledProperty<bool> EnablePreScaleProperty =
-        AvaloniaProperty.Register<ImageBufferView, bool>(nameof(EnablePreScale), true);
-
-    public bool EnablePreScale
-    {
-        get => GetValue(EnablePreScaleProperty);
-        set => SetValue(EnablePreScaleProperty, value);
-    }
+    public static readonly StyledProperty<bool> EnableOptimizationProperty =
+        AvaloniaProperty.Register<ImageBufferView, bool>(nameof(EnableOptimization), true);
 
     /// <summary>
-    /// 源图片分辨率提示，用于优化缓冲区复用策略
-    /// 默认值为 Unknown（最保守模式，不复用缓冲区）
+    /// 是否启用性能优化（默认启用）
+    /// 包含预缩放优化和缓冲区复用，可显著提升渲染性能（10-50%）
     /// </summary>
-    public static readonly StyledProperty<SourceResolutionHint> SourceResolutionHintProperty =
-        AvaloniaProperty.Register<ImageBufferView, SourceResolutionHint>(
-            nameof(SourceResolutionHint), SourceResolutionHint.Unknown);
-
-    /// <summary>
-    /// 源图片分辨率提示，用于优化缓冲区复用策略
-    /// <list type="bullet">
-    /// <item><description>Unknown：最保守模式，不复用缓冲区</description></item>
-    /// <item><description>EnableReuse：启用智能缓冲区复用，自动检测分辨率变化（性能提升 10-30%）</description></item>
-    /// </list>
-    /// </summary>
-    public SourceResolutionHint SourceResolutionHint
+    public bool EnableOptimization
     {
-        get => GetValue(SourceResolutionHintProperty);
-        set => SetValue(SourceResolutionHintProperty, value);
+        get => GetValue(EnableOptimizationProperty);
+        set => SetValue(EnableOptimizationProperty, value);
     }
 
     private static void InterpolationModeChanged(ImageBufferView sender, AvaloniaPropertyChangedEventArgs e)
@@ -150,8 +158,7 @@ public partial class ImageBufferView : Control
     private Size _cachedRenderSize;
     private Stretch _cachedStretch;
     private StretchDirection _cachedStretchDirection;
-    private bool _cachedEnablePreScale;
-    private SourceResolutionHint _cachedSourceResolutionHint;
+    private bool _cachedEnableOptimization;
 
     // 缓冲区复用相关字段（双缓冲方式避免竞态条件）
     private WriteableBitmap? _backBuffer;        // 后台缓冲区（用于写入）
@@ -160,10 +167,39 @@ public partial class ImageBufferView : Control
     private readonly Lock _backBufferLock = new();
     private PixelSize _lastDecodedSourceSize;    // 上一次解码的源图片尺寸（用于检测分辨率变化）
 
+    // SourceView 订阅相关
+    private IDisposable? _sourceViewSubscription;
+
     #endregion
 
     public Size RenderSize => Bounds.Size;
     public Size SourceSize { get; private set; }
+
+    private static void SourceViewChanged(ImageBufferView sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        // 取消旧的订阅
+        sender._sourceViewSubscription?.Dispose();
+        sender._sourceViewSubscription = null;
+
+        if (e.NewValue is ImageBufferView sourceView)
+        {
+            // 立即同步当前 Bitmap
+            sender.Bitmap = sourceView.Bitmap;
+            sender.SourceSize = sourceView.SourceSize;
+
+            // 订阅源控件的 Bitmap 变化
+            sender._sourceViewSubscription = sourceView.GetObservable(BitmapProperty)
+                .Subscribe(new AnonymousObserver<Bitmap?>(bitmap =>
+                {
+                    sender.Bitmap = bitmap;
+                    sender.SourceSize = bitmap?.Size ?? sender.RenderSize;
+                }));
+        }
+        else
+        {
+            sender.Bitmap = null;
+        }
+    }
 
     private static void ImageBufferChanged(ImageBufferView sender, AvaloniaPropertyChangedEventArgs e)
     {
@@ -377,10 +413,21 @@ public partial class ImageBufferView : Control
         _isAttached = false;
         CancelCurrentSession();
 
-        // 清理 Bitmap
-        var oldBitmap = Bitmap;
-        Bitmap = null;
-        oldBitmap?.Dispose();
+        // 清理 SourceView 订阅
+        _sourceViewSubscription?.Dispose();
+        _sourceViewSubscription = null;
+
+        // 清理 Bitmap（仅当不是从 SourceView 复用的情况）
+        if (SourceView is null)
+        {
+            var oldBitmap = Bitmap;
+            Bitmap = null;
+            oldBitmap?.Dispose();
+        }
+        else
+        {
+            Bitmap = null;
+        }
 
         // 清理后台缓冲区
         ClearBackBuffer();
@@ -393,9 +440,9 @@ public partial class ImageBufferView : Control
     /// </summary>
     private void RecycleToBackBuffer(WriteableBitmap bitmap)
     {
-        if (_cachedSourceResolutionHint == SourceResolutionHint.Unknown)
+        if (!_cachedEnableOptimization)
         {
-            // Unknown 模式不复用，直接释放
+            // 未启用优化，不复用，直接释放
             bitmap.Dispose();
             return;
         }
@@ -467,7 +514,7 @@ public partial class ImageBufferView : Control
         var renderSize = _cachedRenderSize;
         var stretch = _cachedStretch;
         var stretchDirection = _cachedStretchDirection;
-        var resolutionHint = _cachedSourceResolutionHint;
+        var enableOptimization = _cachedEnableOptimization;
 
         // 检测源图片分辨率是否发生变化（如切换摄像头）
         var lastSourceSize = _lastDecodedSourceSize;
@@ -490,10 +537,10 @@ public partial class ImageBufferView : Control
         _lastDecodedSourceSize = sourceSize;
 
         // 判断是否需要预缩放
-        if (!_cachedEnablePreScale || renderSize.Width <= 0 || renderSize.Height <= 0)
+        if (!enableOptimization || renderSize.Width <= 0 || renderSize.Height <= 0)
         {
             // 不缩放，直接转换为 Avalonia Bitmap
-            return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, resolutionHint);
+            return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, enableOptimization);
         }
 
         // 计算缩放比例（使用缓存的值，避免跨线程访问）
@@ -502,7 +549,7 @@ public partial class ImageBufferView : Control
         if (scale.X >= 1.0 && scale.Y >= 1.0)
         {
             // 图片小于或等于渲染区域，不需要预缩放（放大由 GPU 处理更高效）
-            return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, resolutionHint);
+            return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, enableOptimization);
         }
 
         // 图片大于渲染区域，预先缩小以减少渲染负担
@@ -515,21 +562,21 @@ public partial class ImageBufferView : Control
 
         if (resizedBitmap is null)
         {
-            return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, resolutionHint);
+            return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, enableOptimization);
         }
 
         // 对于缩放后的图片，目标尺寸是固定的（基于渲染区域），可以考虑复用
-        return ConvertSkBitmapToAvaloniaWithReuse(resizedBitmap, resolutionHint);
+        return ConvertSkBitmapToAvaloniaWithReuse(resizedBitmap, enableOptimization);
     }
 
     /// <summary>
     /// 将 SKBitmap 转换为 Avalonia Bitmap，支持缓冲区复用（双缓冲方式）
     /// </summary>
     /// <param name="skBitmap">源 SKBitmap</param>
-    /// <param name="resolutionHint">分辨率提示</param>
+    /// <param name="enableReuse">是否启用缓冲区复用</param>
     private WriteableBitmap? ConvertSkBitmapToAvaloniaWithReuse(
         SKBitmap skBitmap,
-        SourceResolutionHint resolutionHint)
+        bool enableReuse)
     {
         var info = skBitmap.Info;
         var pixelFormat = info.ColorType switch
@@ -560,8 +607,8 @@ public partial class ImageBufferView : Control
             var height = bitmapToUse.Height;
             var currentSize = new PixelSize(width, height);
 
-            // EnableReuse 模式：启用智能复用，自动检测机制会在分辨率变化时重置缓冲区
-            var canReuse = resolutionHint != SourceResolutionHint.Unknown;
+            // 启用优化时复用缓冲区，自动检测机制会在分辨率变化时重置
+            var canReuse = enableReuse;
 
             WriteableBitmap? bitmap = null;
 
@@ -617,8 +664,7 @@ public partial class ImageBufferView : Control
         _cachedRenderSize = Bounds.Size;
         _cachedStretch = Stretch;
         _cachedStretchDirection = StretchDirection;
-        _cachedEnablePreScale = EnablePreScale;
-        _cachedSourceResolutionHint = SourceResolutionHint;
+        _cachedEnableOptimization = EnableOptimization;
 
         var pooledBuffer = ArrayPool<byte>.Shared.Rent(buffer.Count);
         buffer.AsSpan().CopyTo(pooledBuffer);
