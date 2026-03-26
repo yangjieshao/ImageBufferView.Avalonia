@@ -2,10 +2,12 @@
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Threading;
+using SkiaSharp;
 using System;
 using System.Buffers;
-using System.IO;
+using System.Diagnostics;
 using System.Threading;
 
 namespace ImageBufferView.Avalonia;
@@ -94,6 +96,19 @@ public partial class ImageBufferView : Control
         set => SetValue(InterpolationModeProperty, value);
     }
 
+    /// <summary>
+    /// 是否启用 SkiaSharp 预缩放优化
+    /// 当输入图片与渲染区域大小不一致时，在解码阶段预先缩放可显著提升渲染性能
+    /// </summary>
+    public static readonly StyledProperty<bool> EnablePreScaleProperty =
+        AvaloniaProperty.Register<ImageBufferView, bool>(nameof(EnablePreScale), true);
+
+    public bool EnablePreScale
+    {
+        get => GetValue(EnablePreScaleProperty);
+        set => SetValue(EnablePreScaleProperty, value);
+    }
+
     private static void InterpolationModeChanged(ImageBufferView sender, AvaloniaPropertyChangedEventArgs e)
     {
         if (e.NewValue is BitmapInterpolationMode mode)
@@ -112,6 +127,10 @@ public partial class ImageBufferView : Control
     private volatile bool _isAttached;
     private CancellationTokenSource? _sessionCts;
     private readonly Lock _sessionLock = new();
+    private Size _cachedRenderSize;
+    private Stretch _cachedStretch;
+    private StretchDirection _cachedStretchDirection;
+    private bool _cachedEnablePreScale;
 
     #endregion
 
@@ -215,9 +234,8 @@ public partial class ImageBufferView : Control
                         return;
                     }
 
-                    // 使用 UnmanagedMemoryStream 或直接从内存解码，减少拷贝
-                    using var stream = new MemoryStream(buffer, 0, length, false);
-                    newBitmap = new Bitmap(stream);
+                    // 使用 SkiaSharp 解码并预缩放
+                    newBitmap = DecodeAndScaleBitmap(buffer, length);
                 }
                 finally
                 {
@@ -230,6 +248,11 @@ public partial class ImageBufferView : Control
                 return;
             }
             catch
+            {
+                continue;
+            }
+
+            if (newBitmap is null)
             {
                 continue;
             }
@@ -248,7 +271,7 @@ public partial class ImageBufferView : Control
             {
                 if (!_isAttached || capturedToken.IsCancellationRequested)
                 {
-                    bitmapToSet.Dispose();
+                    bitmapToSet?.Dispose();
                     return;
                 }
                 var oldBitmap = Bitmap;
@@ -307,6 +330,7 @@ public partial class ImageBufferView : Control
     {
         base.OnAttachedToVisualTree(e);
         _isAttached = true;
+        _cachedRenderSize = Bounds.Size;
         // 处理在 attach 之前已设置的 ImageBuffer
         if (ImageBuffer is { Array: not null, Count: > 0 } buffer)
         {
@@ -324,8 +348,125 @@ public partial class ImageBufferView : Control
         oldBitmap?.Dispose();
     }
 
+    /// <summary>
+    /// 使用 SkiaSharp 解码图片，并根据渲染区域进行预缩放优化
+    /// </summary>
+    private WriteableBitmap? DecodeAndScaleBitmap(byte[] buffer, int length)
+    {
+        using var skData = SKData.CreateCopy(new ReadOnlySpan<byte>(buffer, 0, length));
+        using var skBitmap = SKBitmap.Decode(skData);
+
+        if (skBitmap is null)
+        {
+            return null;
+        }
+
+        var sourceWidth = skBitmap.Width;
+        var sourceHeight = skBitmap.Height;
+        var renderSize = _cachedRenderSize;
+        var stretch = _cachedStretch;
+        var stretchDirection = _cachedStretchDirection;
+
+        // 判断是否需要预缩放
+        if (!_cachedEnablePreScale || renderSize.Width <= 0 || renderSize.Height <= 0)
+        {
+            // 不缩放，直接转换为 Avalonia Bitmap
+            return ConvertSkBitmapToAvalonia(skBitmap);
+        }
+
+        // 计算缩放比例（使用缓存的值，避免跨线程访问）
+        var scale = stretch.CalculateScaling(renderSize, new Size(sourceWidth, sourceHeight), stretchDirection);
+
+        if (scale.X >= 1.0 && scale.Y >= 1.0)
+        {
+            // 图片小于或等于渲染区域，不需要预缩放（放大由 GPU 处理更高效）
+            return ConvertSkBitmapToAvalonia(skBitmap);
+        }
+
+        // 图片大于渲染区域，预先缩小以减少渲染负担
+        var targetWidth = Math.Max(1, (int)(sourceWidth * scale.X));
+        var targetHeight = Math.Max(1, (int)(sourceHeight * scale.Y));
+
+        // 使用 SkiaSharp 高效缩放
+        using var resizedBitmap = skBitmap.Resize(new SKImageInfo(targetWidth, targetHeight), SKFilterQuality.Medium);
+
+        if (resizedBitmap is null)
+        {
+            return ConvertSkBitmapToAvalonia(skBitmap);
+        }
+
+        return ConvertSkBitmapToAvalonia(resizedBitmap);
+    }
+
+    /// <summary>
+    /// 将 SKBitmap 转换为 Avalonia Bitmap
+    /// </summary>
+    private static WriteableBitmap? ConvertSkBitmapToAvalonia(SKBitmap skBitmap)
+    {
+        var info = skBitmap.Info;
+        var pixelFormat = info.ColorType switch
+        {
+            SKColorType.Rgba8888 => PixelFormat.Rgba8888,
+            SKColorType.Bgra8888 => PixelFormat.Bgra8888,
+            _ => PixelFormat.Bgra8888
+        };
+
+        // 如果颜色类型不匹配，需要转换
+        SKBitmap? convertedBitmap = null;
+        var bitmapToUse = skBitmap;
+
+        if (info.ColorType != SKColorType.Bgra8888 && info.ColorType != SKColorType.Rgba8888)
+        {
+            convertedBitmap = new SKBitmap(info.Width, info.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+            using var canvas = new SKCanvas(convertedBitmap);
+            canvas.DrawBitmap(skBitmap, 0, 0);
+            bitmapToUse = convertedBitmap;
+            pixelFormat = PixelFormat.Bgra8888;
+        }
+
+        try
+        {
+            var pixels = bitmapToUse.GetPixels();
+            var rowBytes = bitmapToUse.RowBytes;
+            var width = bitmapToUse.Width;
+            var height = bitmapToUse.Height;
+
+            var bitmap = new WriteableBitmap(
+                new PixelSize(width, height),
+                new Vector(96, 96),
+                pixelFormat,
+                AlphaFormat.Premul);
+
+            using var fb = bitmap.Lock();
+            unsafe
+            {
+                Buffer.MemoryCopy(
+                    (void*)pixels,
+                    (void*)fb.Address,
+                    fb.RowBytes * height,
+                    rowBytes * height);
+            }
+
+            return bitmap;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            convertedBitmap?.Dispose();
+        }
+    }
+
     private void TryStartDecode(ArraySegment<byte> buffer)
     {
+        // 缓存当前渲染大小和缩放设置，供后台线程使用
+        _cachedRenderSize = Bounds.Size;
+        _cachedStretch = Stretch;
+        _cachedStretchDirection = StretchDirection;
+        _cachedEnablePreScale = EnablePreScale;
+
         var pooledBuffer = ArrayPool<byte>.Shared.Rent(buffer.Count);
         buffer.AsSpan().CopyTo(pooledBuffer);
 

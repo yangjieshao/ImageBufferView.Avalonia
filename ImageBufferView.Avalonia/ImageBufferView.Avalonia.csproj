@@ -5,10 +5,12 @@
         <Version>1.0.0.1</Version>
         <ImplicitUsings>disable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <AssemblyName>$(MSBuildProjectName)</AssemblyName>
+		<AssemblyName>$(MSBuildProjectName)</AssemblyName>
+        <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     </PropertyGroup>
 
     <ItemGroup>
 		<PackageReference Include="Avalonia" Version="11.3.12" />
+		<PackageReference Include="SkiaSharp" Version="2.88.9" />
     </ItemGroup>
 </Project>

@@ -125,8 +125,8 @@
             <ibv:ImageBufferView
                 Grid.Row="1"
                 Grid.Column="2"
-                Bitmap="{Binding Bitmap, ElementName=FirstPic}"
                 DefaultBackground="AliceBlue"
+                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
                 Stretch="None"
                 StretchDirection="UpOnly" />
@@ -134,8 +134,8 @@
             <ibv:ImageBufferView
                 Grid.Row="1"
                 Grid.Column="3"
-                Bitmap="{Binding Bitmap, ElementName=FirstPic}"
                 DefaultBackground="BurlyWood"
+                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
                 Stretch="None"
                 StretchDirection="DownOnly" />
@@ -143,8 +143,8 @@
             <ibv:ImageBufferView
                 Grid.Row="2"
                 Grid.Column="1"
-                Bitmap="{Binding Bitmap, ElementName=FirstPic}"
                 DefaultBackground="Chocolate"
+                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
                 Stretch="Fill"
                 StretchDirection="Both" />
@@ -152,7 +152,7 @@
             <ibv:ImageBufferView
                 Grid.Row="2"
                 Grid.Column="2"
-                Bitmap="{Binding Bitmap, ElementName=FirstPic}"
+                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
                 Stretch="Fill"
                 StretchDirection="UpOnly">
@@ -164,7 +164,7 @@
             <ibv:ImageBufferView
                 Grid.Row="2"
                 Grid.Column="3"
-                Bitmap="{Binding Bitmap, ElementName=FirstPic}"
+                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
                 Stretch="Fill"
                 StretchDirection="DownOnly">
@@ -176,8 +176,8 @@
             <ibv:ImageBufferView
                 Grid.Row="3"
                 Grid.Column="1"
-                Bitmap="{Binding Bitmap, ElementName=FirstPic}"
                 DefaultBackground="DarkGray"
+                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
                 Stretch="Uniform"
                 StretchDirection="Both" />
@@ -185,8 +185,8 @@
             <ibv:ImageBufferView
                 Grid.Row="3"
                 Grid.Column="2"
-                Bitmap="{Binding Bitmap, ElementName=FirstPic}"
                 DefaultBackground="Gainsboro"
+                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
                 Stretch="Uniform"
                 StretchDirection="UpOnly" />
@@ -194,8 +194,8 @@
             <ibv:ImageBufferView
                 Grid.Row="3"
                 Grid.Column="3"
-                Bitmap="{Binding Bitmap, ElementName=FirstPic}"
                 DefaultBackground="DarkGreen"
+                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
                 Stretch="Uniform"
                 StretchDirection="DownOnly" />
@@ -203,8 +203,8 @@
             <ibv:ImageBufferView
                 Grid.Row="4"
                 Grid.Column="1"
-                Bitmap="{Binding Bitmap, ElementName=FirstPic}"
                 DefaultBackground="FloralWhite"
+                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
                 Stretch="UniformToFill"
                 StretchDirection="Both" />
@@ -212,8 +212,8 @@
             <ibv:ImageBufferView
                 Grid.Row="4"
                 Grid.Column="2"
-                Bitmap="{Binding Bitmap, ElementName=FirstPic}"
                 DefaultBackground="Linen"
+                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
                 Stretch="UniformToFill"
                 StretchDirection="UpOnly" />
@@ -221,7 +221,7 @@
             <ibv:ImageBufferView
                 Grid.Row="4"
                 Grid.Column="3"
-                Bitmap="{Binding Bitmap, ElementName=FirstPic}"
+                ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
                 Stretch="UniformToFill"
                 StretchDirection="DownOnly" />
