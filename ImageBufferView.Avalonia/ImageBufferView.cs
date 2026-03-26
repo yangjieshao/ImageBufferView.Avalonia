@@ -127,23 +127,7 @@ public partial class ImageBufferView : Control
 
         if (e.NewValue is ArraySegment<byte> { Array: not null, Count: > 0 } buffer)
         {
-            // 使用 ArrayPool 减少 GC 压力
-            var pooledBuffer = ArrayPool<byte>.Shared.Rent(buffer.Count);
-            buffer.AsSpan().CopyTo(pooledBuffer);
-
-            // 原子替换，回收旧缓冲区
-            var oldBuffer = Interlocked.Exchange(ref sender._latestBuffer, pooledBuffer);
-            Interlocked.Exchange(ref sender._latestBufferLength, buffer.Count);
-
-            if (oldBuffer is not null)
-            {
-                ArrayPool<byte>.Shared.Return(oldBuffer);
-            }
-
-            if (Interlocked.CompareExchange(ref sender._decoding, 1, 0) == 0)
-            {
-                ThreadPool.UnsafeQueueUserWorkItem(static ctrl => ctrl.DecodeLoop(), sender, preferLocal: false);
-            }
+            sender.TryStartDecode(buffer);
         }
         else
         {
@@ -323,6 +307,11 @@ public partial class ImageBufferView : Control
     {
         base.OnAttachedToVisualTree(e);
         _isAttached = true;
+        // 处理在 attach 之前已设置的 ImageBuffer
+        if (ImageBuffer is { Array: not null, Count: > 0 } buffer)
+        {
+            TryStartDecode(buffer);
+        }
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -333,5 +322,24 @@ public partial class ImageBufferView : Control
         var oldBitmap = Bitmap;
         Bitmap = null;
         oldBitmap?.Dispose();
+    }
+
+    private void TryStartDecode(ArraySegment<byte> buffer)
+    {
+        var pooledBuffer = ArrayPool<byte>.Shared.Rent(buffer.Count);
+        buffer.AsSpan().CopyTo(pooledBuffer);
+
+        var oldBuffer = Interlocked.Exchange(ref _latestBuffer, pooledBuffer);
+        Interlocked.Exchange(ref _latestBufferLength, buffer.Count);
+
+        if (oldBuffer is not null)
+        {
+            ArrayPool<byte>.Shared.Return(oldBuffer);
+        }
+
+        if (Interlocked.CompareExchange(ref _decoding, 1, 0) == 0)
+        {
+            ThreadPool.UnsafeQueueUserWorkItem(static ctrl => ctrl.DecodeLoop(), this, preferLocal: false);
+        }
     }
 }

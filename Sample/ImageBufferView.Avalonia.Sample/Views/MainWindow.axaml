@@ -231,7 +231,7 @@
         <Grid
             Grid.Column="1"
             Background="BlueViolet"
-            RowDefinitions="auto,30,30">
+            RowDefinitions="auto,30,30,*">
             <ibv:ImageBufferView
                 Grid.Row="0"
                 Width="300"
@@ -274,6 +274,14 @@
                     </DataTemplate>
                 </ComboBox.ItemTemplate>
             </ComboBox>
+
+            <ibv:ImageBufferView
+                Grid.Row="3"
+                Margin="5"
+                ImageBuffer="{Binding ImageBuffer2}"
+                InterpolationMode="LowQuality"
+                Stretch="UniformToFill"
+                StretchDirection="DownOnly" />
         </Grid>
 
         <!--#endregion 实时画面-->
