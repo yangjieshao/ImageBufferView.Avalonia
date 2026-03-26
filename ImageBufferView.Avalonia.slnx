@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/Sample/">
+    <Project Path="Sample/ImageBufferView.Avalonia.Sample/ImageBufferView.Avalonia.Sample.csproj" />
+  </Folder>
+  <Folder Name="/解决方案项/">
+    <File Path=".gitignore" />
+    <File Path=".mcp.json" />
+    <File Path="AGENTS.md" />
+    <File Path="Directory.Build.props" />
+    <File Path="global.json" />
+    <File Path="LICENSE" />
+    <File Path="README.md" />
+  </Folder>
+  <Project Path="ImageBufferView.Avalonia/ImageBufferView.Avalonia.csproj" />
+</Solution>

@@ -117,8 +117,10 @@
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
                 DefaultBackground="Black"
+                EnablePreScale="True"
                 ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
+                SourceResolutionHint="Fixed"
                 Stretch="None"
                 StretchDirection="Both" />
 
@@ -126,8 +128,10 @@
                 Grid.Row="1"
                 Grid.Column="2"
                 DefaultBackground="AliceBlue"
+                EnablePreScale="True"
                 ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
+                SourceResolutionHint="Fixed"
                 Stretch="None"
                 StretchDirection="UpOnly" />
 
@@ -135,8 +139,10 @@
                 Grid.Row="1"
                 Grid.Column="3"
                 DefaultBackground="BurlyWood"
+                EnablePreScale="True"
                 ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
+                SourceResolutionHint="Fixed"
                 Stretch="None"
                 StretchDirection="DownOnly" />
 
@@ -144,16 +150,20 @@
                 Grid.Row="2"
                 Grid.Column="1"
                 DefaultBackground="Chocolate"
+                EnablePreScale="True"
                 ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
+                SourceResolutionHint="Fixed"
                 Stretch="Fill"
                 StretchDirection="Both" />
 
             <ibv:ImageBufferView
                 Grid.Row="2"
                 Grid.Column="2"
+                EnablePreScale="True"
                 ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
+                SourceResolutionHint="Fixed"
                 Stretch="Fill"
                 StretchDirection="UpOnly">
                 <ibv:ImageBufferView.DefaultBackground>
@@ -164,8 +174,10 @@
             <ibv:ImageBufferView
                 Grid.Row="2"
                 Grid.Column="3"
+                EnablePreScale="True"
                 ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
+                SourceResolutionHint="Fixed"
                 Stretch="Fill"
                 StretchDirection="DownOnly">
                 <ibv:ImageBufferView.DefaultBackground>
@@ -177,8 +189,10 @@
                 Grid.Row="3"
                 Grid.Column="1"
                 DefaultBackground="DarkGray"
+                EnablePreScale="True"
                 ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
+                SourceResolutionHint="Fixed"
                 Stretch="Uniform"
                 StretchDirection="Both" />
 
@@ -186,8 +200,10 @@
                 Grid.Row="3"
                 Grid.Column="2"
                 DefaultBackground="Gainsboro"
+                EnablePreScale="True"
                 ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
+                SourceResolutionHint="Fixed"
                 Stretch="Uniform"
                 StretchDirection="UpOnly" />
 
@@ -195,8 +211,10 @@
                 Grid.Row="3"
                 Grid.Column="3"
                 DefaultBackground="DarkGreen"
+                EnablePreScale="True"
                 ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
+                SourceResolutionHint="Fixed"
                 Stretch="Uniform"
                 StretchDirection="DownOnly" />
 
@@ -204,8 +222,10 @@
                 Grid.Row="4"
                 Grid.Column="1"
                 DefaultBackground="FloralWhite"
+                EnablePreScale="True"
                 ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
+                SourceResolutionHint="Fixed"
                 Stretch="UniformToFill"
                 StretchDirection="Both" />
 
@@ -213,16 +233,20 @@
                 Grid.Row="4"
                 Grid.Column="2"
                 DefaultBackground="Linen"
+                EnablePreScale="True"
                 ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
+                SourceResolutionHint="Fixed"
                 Stretch="UniformToFill"
                 StretchDirection="UpOnly" />
 
             <ibv:ImageBufferView
                 Grid.Row="4"
                 Grid.Column="3"
+                EnablePreScale="True"
                 ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
+                SourceResolutionHint="Fixed"
                 Stretch="UniformToFill"
                 StretchDirection="DownOnly" />
         </Grid>
