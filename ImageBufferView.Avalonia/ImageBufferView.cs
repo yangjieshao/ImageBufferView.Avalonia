@@ -12,6 +12,9 @@ using System.Threading;
 
 namespace ImageBufferView.Avalonia;
 
+/// <summary>
+/// 表示一个可从字节缓冲解码并显示的图像控件，包含预缩放和缓冲复用优化。
+/// </summary>
 public partial class ImageBufferView : Control
 {
     /// <summary>
@@ -39,33 +42,54 @@ public partial class ImageBufferView : Control
 
     #region Properties
 
+    /// <summary>
+    /// 控件缩放模式
+    /// </summary>
     public static readonly StyledProperty<Stretch> StretchProperty =
         AvaloniaProperty.Register<ImageBufferView, Stretch>(nameof(Stretch), Stretch.None);
 
+    /// <summary>
+    /// 控件缩放模式
+    /// </summary>
     public Stretch Stretch
     {
         get => GetValue(StretchProperty);
         set => SetValue(StretchProperty, value);
     }
 
+    /// <summary>
+    /// 缩放方向约束
+    /// </summary>
     public static readonly StyledProperty<StretchDirection> StretchDirectionProperty =
         AvaloniaProperty.Register<ImageBufferView, StretchDirection>(nameof(StretchDirection), StretchDirection.Both);
 
+    /// <summary>
+    /// 缩放方向约束
+    /// </summary>
     public StretchDirection StretchDirection
     {
         get => GetValue(StretchDirectionProperty);
         set => SetValue(StretchDirectionProperty, value);
     }
 
+    /// <summary>
+    /// 输入的图片字节缓冲（可为 null 表示清空）
+    /// </summary>
     public static readonly StyledProperty<ArraySegment<byte>?> ImageBufferProperty =
         AvaloniaProperty.Register<ImageBufferView, ArraySegment<byte>?>(nameof(ImageBuffer));
 
+    /// <summary>
+    /// 输入的图片字节缓冲（可为 null 表示清空）
+    /// </summary>
     public ArraySegment<byte>? ImageBuffer
     {
         get => GetValue(ImageBufferProperty);
         set => SetValue(ImageBufferProperty, value);
     }
 
+    /// <summary>
+    /// 当前显示的 Bitmap（只读）
+    /// </summary>
     public static readonly StyledProperty<Bitmap?> BitmapProperty =
         AvaloniaProperty.Register<ImageBufferView, Bitmap?>(nameof(Bitmap));
 
@@ -78,28 +102,30 @@ public partial class ImageBufferView : Control
         private set => SetValue(BitmapProperty, value);
     }
 
+    /// <summary>
+    /// 如果设置为另一个 ImageBufferView，则共享并同步该控件的 Bitmap（只读复用）
+    /// </summary>
     public static readonly StyledProperty<ImageBufferView?> SourceViewProperty =
         AvaloniaProperty.Register<ImageBufferView, ImageBufferView?>(nameof(SourceView));
 
     /// <summary>
-    /// 源 ImageBufferView，用于复用其他控件的 Bitmap
-    /// 设置后会自动同步源控件的 Bitmap
+    /// 源 ImageBufferView，用于复用其他控件的 Bitmap。设置后会自动同步源控件的 Bitmap。
     /// </summary>
-    /// <example>
-    /// <code>
-    /// &lt;ibv:ImageBufferView Name="FirstPic" ImageBuffer="{Binding ImageBuffer}" /&gt;
-    /// &lt;ibv:ImageBufferView SourceView="{Binding ElementName=FirstPic}" /&gt;
-    /// </code>
-    /// </example>
     public ImageBufferView? SourceView
     {
         get => GetValue(SourceViewProperty);
         set => SetValue(SourceViewProperty, value);
     }
 
+    /// <summary>
+    /// 当没有图片时使用的默认背景画刷
+    /// </summary>
     public static readonly StyledProperty<IBrush?> DefaultBackgroundProperty =
         AvaloniaProperty.Register<ImageBufferView, IBrush?>(nameof(DefaultBackground));
 
+    /// <summary>
+    /// 当没有图片时使用的默认背景画刷
+    /// </summary>
     public IBrush? DefaultBackground
     {
         get => GetValue(DefaultBackgroundProperty);
@@ -113,6 +139,9 @@ public partial class ImageBufferView : Control
         AvaloniaProperty.Register<ImageBufferView, BitmapInterpolationMode>(
             nameof(InterpolationMode), BitmapInterpolationMode.MediumQuality);
 
+    /// <summary>
+    /// 插值模式：LowQuality 性能最高，HighQuality 质量最好
+    /// </summary>
     public BitmapInterpolationMode InterpolationMode
     {
         get => GetValue(InterpolationModeProperty);
@@ -120,16 +149,13 @@ public partial class ImageBufferView : Control
     }
 
     /// <summary>
-    /// 是否启用性能优化（默认启用）
-    /// 包含预缩放优化和缓冲区复用，可显著提升渲染性能（10-50%）
-    /// 自动检测分辨率变化并智能处理各种场景
+    /// 是否启用性能优化（默认启用），包含预缩放和缓冲复用
     /// </summary>
     public static readonly StyledProperty<bool> EnableOptimizationProperty =
         AvaloniaProperty.Register<ImageBufferView, bool>(nameof(EnableOptimization), true);
 
     /// <summary>
-    /// 是否启用性能优化（默认启用）
-    /// 包含预缩放优化和缓冲区复用，可显著提升渲染性能（10-50%）
+    /// 是否启用性能优化（默认启用），包含预缩放和缓冲复用
     /// </summary>
     public bool EnableOptimization
     {
@@ -172,9 +198,19 @@ public partial class ImageBufferView : Control
 
     #endregion
 
+    /// <summary>
+    /// 当前控件的渲染区域大小
+    /// </summary>
     public Size RenderSize => Bounds.Size;
+
+    /// <summary>
+    /// 源图片尺寸（来自 Bitmap.Size）
+    /// </summary>
     public Size SourceSize { get; private set; }
 
+    /// <summary>
+    /// 当 SourceView 属性变化时同步订阅或取消订阅源控件的 Bitmap
+    /// </summary>
     private static void SourceViewChanged(ImageBufferView sender, AvaloniaPropertyChangedEventArgs e)
     {
         // 取消旧的订阅
@@ -201,6 +237,9 @@ public partial class ImageBufferView : Control
         }
     }
 
+    /// <summary>
+    /// 当 ImageBuffer 属性变化时触发：开始解码或取消当前会话并释放旧资源（在无 SourceView 时释放）
+    /// </summary>
     private static void ImageBufferChanged(ImageBufferView sender, AvaloniaPropertyChangedEventArgs e)
     {
         if (!sender._isAttached)
@@ -217,15 +256,25 @@ public partial class ImageBufferView : Control
             sender.CancelCurrentSession();
             var oldBitmap = sender.Bitmap;
             sender.Bitmap = null;
-            oldBitmap?.Dispose();
+            // 只有在没有 SourceView（即本控件拥有 Bitmap 的情况下）才释放旧 Bitmap
+            if (sender.SourceView is null)
+            {
+                oldBitmap?.Dispose();
+            }
         }
     }
 
+    /// <summary>
+    /// 当 Bitmap 属性改变时更新 SourceSize
+    /// </summary>
     private static void BitmapChanged(ImageBufferView sender, AvaloniaPropertyChangedEventArgs e)
     {
         sender.SourceSize = e.NewValue is Bitmap bitmap ? bitmap.Size : sender.RenderSize;
     }
 
+    /// <summary>
+    /// 取消当前解码会话，清理等待缓冲区并释放对应的 pooled buffer
+    /// </summary>
     private void CancelCurrentSession()
     {
         lock (_sessionLock)
@@ -243,6 +292,9 @@ public partial class ImageBufferView : Control
         }
     }
 
+    /// <summary>
+    /// 获取或创建当前会话的 CancellationToken（线程安全）
+    /// </summary>
     private CancellationToken GetOrCreateSessionToken()
     {
         lock (_sessionLock)
@@ -252,6 +304,9 @@ public partial class ImageBufferView : Control
         }
     }
 
+    /// <summary>
+    /// 解码循环：从最新缓冲读取、限制并发、解码并在 UI 线程发布 Bitmap 更新
+    /// </summary>
     private void DecodeLoop()
     {
         var token = GetOrCreateSessionToken();
@@ -343,9 +398,18 @@ public partial class ImageBufferView : Control
                 Bitmap = bitmapToSet;
 
                 // 将旧 Bitmap 回收到后台缓冲区（如果尺寸匹配）
-                if (oldBitmap is WriteableBitmap oldWriteable)
+                // 并避免释放来自 SourceView 的共享 Bitmap（比较引用）
+                if (oldBitmap is not null && !ReferenceEquals(oldBitmap, SourceView?.Bitmap))
                 {
-                    RecycleToBackBuffer(oldWriteable);
+                    if (oldBitmap is WriteableBitmap oldWriteable)
+                    {
+                        RecycleToBackBuffer(oldWriteable);
+                    }
+                    else
+                    {
+                        // 非可回收的 Bitmap，直接释放以避免泄漏
+                        oldBitmap.Dispose();
+                    }
                 }
             }, DispatcherPriority.Render);
         }
@@ -353,18 +417,27 @@ public partial class ImageBufferView : Control
         Volatile.Write(ref _decoding, 0);
     }
 
+    /// <summary>
+    /// 测量覆盖：根据 Bitmap 和 Stretch 计算所需大小
+    /// </summary>
     protected override Size MeasureOverride(Size availableSize)
     {
         return Bitmap is not null ? Stretch.CalculateSize(availableSize, SourceSize, StretchDirection)
                                   : base.MeasureOverride(availableSize);
     }
 
+    /// <summary>
+    /// 排列覆盖：根据 Bitmap 和 Stretch 计算最终大小
+    /// </summary>
     protected override Size ArrangeOverride(Size finalSize)
     {
         return Bitmap is not null ? Stretch.CalculateSize(finalSize, SourceSize)
                                   : base.ArrangeOverride(finalSize);
     }
 
+    /// <summary>
+    /// 渲染逻辑：计算源/目标矩形并绘制 Bitmap 或默认背景
+    /// </summary>
     public override void Render(DrawingContext drawingContext)
     {
         if (RenderSize is { Width: > 0.0, Height: > 0.0 })
@@ -396,6 +469,9 @@ public partial class ImageBufferView : Control
         base.Render(drawingContext);
     }
 
+    /// <summary>
+    /// 当控件附加到可视树时启动解码流程（如已有缓冲则立即开始）
+    /// </summary>
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
@@ -408,6 +484,9 @@ public partial class ImageBufferView : Control
         }
     }
 
+    /// <summary>
+    /// 当控件从可视树分离时取消会话并清理资源
+    /// </summary>
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         _isAttached = false;
@@ -488,7 +567,6 @@ public partial class ImageBufferView : Control
 
     /// <summary>
     /// 重置缓冲区状态，用于源图片分辨率变化时（如切换摄像头）
-    /// 调用此方法后，下一帧会创建新的缓冲区
     /// </summary>
     public void ResetBuffers()
     {
@@ -496,7 +574,7 @@ public partial class ImageBufferView : Control
     }
 
     /// <summary>
-    /// 使用 SkiaSharp 解码图片，并根据渲染区域进行预缩放优化
+    /// 使用 SkiaSharp 解码图片，并根据渲染区域进行预缩放优化，返回可复用的 WriteableBitmap 或 null
     /// </summary>
     private WriteableBitmap? DecodeAndScaleBitmap(byte[] buffer, int length)
     {
@@ -555,7 +633,6 @@ public partial class ImageBufferView : Control
         // 图片大于渲染区域，预先缩小以减少渲染负担
         var targetWidth = Math.Max(1, (int)(sourceWidth * scale.X));
         var targetHeight = Math.Max(1, (int)(sourceHeight * scale.Y));
-        var targetSize = new PixelSize(targetWidth, targetHeight);
 
         // 使用 SkiaSharp 高效缩放
         using var resizedBitmap = skBitmap.Resize(new SKImageInfo(targetWidth, targetHeight), SKFilterQuality.Medium);
@@ -570,7 +647,7 @@ public partial class ImageBufferView : Control
     }
 
     /// <summary>
-    /// 将 SKBitmap 转换为 Avalonia Bitmap，支持缓冲区复用（双缓冲方式）
+    /// 将 SKBitmap 转换为 Avalonia 的 WriteableBitmap，支持后台缓冲复用（成功则返回 WriteableBitmap）
     /// </summary>
     /// <param name="skBitmap">源 SKBitmap</param>
     /// <param name="enableReuse">是否启用缓冲区复用</param>
@@ -658,6 +735,9 @@ public partial class ImageBufferView : Control
         }
     }
 
+    /// <summary>
+    /// 尝试开始解码：缓存渲染参数、租用缓冲区并排队后台解码任务
+    /// </summary>
     private void TryStartDecode(ArraySegment<byte> buffer)
     {
         // 缓存当前渲染大小和缩放设置，供后台线程使用

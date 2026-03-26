@@ -11,9 +11,10 @@
 - 语言：C# 14，.NET 10
 - 缩进：4 空格，禁用 Tab
 - 在最新的c#语法中， 是可以用 [] 初始化数组的， 所以建议使用 new T[] 来初始化数组
+- 尽可能使用 var 定义数据类型， 只有在无法从右侧推断出类型时才使用显式类型
 - .axml 文件要求使用 XAML Styler 进行格式化
-- 忽视代码中 '移除未使用 using' 的警告， 因为现在离项目完成还有很长的路要走， 可能会有很多 using 是暂时未使用的， 但是在后续开发中会用到的
+
 
  
 # MCP 工具（Copilot 专用）
-- 可用工具：github（代码搜索/PR）、avalonia-docs、Irihi.Eureka.McpServer
+- 可用工具：avalonia-docs
