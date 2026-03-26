@@ -160,6 +160,7 @@ public partial class ImageBufferView : Control
     private PixelSize _backBufferSize;
     private PixelFormat _backBufferFormat;
     private readonly Lock _backBufferLock = new();
+    private PixelSize _lastDecodedSourceSize;    // 上一次解码的源图片尺寸（用于检测分辨率变化）
 
     #endregion
 
@@ -434,9 +435,19 @@ public partial class ImageBufferView : Control
             bitmapToDispose = _backBuffer;
             _backBuffer = null;
             _backBufferSize = default;
+            _lastDecodedSourceSize = default;
         }
 
         bitmapToDispose?.Dispose();
+    }
+
+    /// <summary>
+    /// 重置缓冲区状态，用于源图片分辨率变化时（如切换摄像头）
+    /// 调用此方法后，下一帧会创建新的缓冲区
+    /// </summary>
+    public void ResetBuffers()
+    {
+        ClearBackBuffer();
     }
 
     /// <summary>
@@ -459,6 +470,26 @@ public partial class ImageBufferView : Control
         var stretch = _cachedStretch;
         var stretchDirection = _cachedStretchDirection;
         var resolutionHint = _cachedSourceResolutionHint;
+
+        // 检测源图片分辨率是否发生变化（如切换摄像头）
+        var lastSourceSize = _lastDecodedSourceSize;
+        if (lastSourceSize != default && lastSourceSize != sourceSize)
+        {
+            // 分辨率变化，清理后台缓冲区
+            lock (_backBufferLock)
+            {
+                if (_backBuffer is not null && _backBufferSize != default)
+                {
+                    // 将旧缓冲区标记为需要释放
+                    var oldBuffer = _backBuffer;
+                    _backBuffer = null;
+                    _backBufferSize = default;
+                    // 在 UI 线程释放
+                    Dispatcher.UIThread.Post(() => oldBuffer?.Dispose(), DispatcherPriority.Background);
+                }
+            }
+        }
+        _lastDecodedSourceSize = sourceSize;
 
         // 判断是否需要预缩放
         if (!_cachedEnablePreScale || renderSize.Width <= 0 || renderSize.Height <= 0)

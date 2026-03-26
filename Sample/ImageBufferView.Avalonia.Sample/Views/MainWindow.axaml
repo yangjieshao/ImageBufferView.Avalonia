@@ -261,8 +261,10 @@
                 Width="300"
                 Height="300"
                 Margin="5"
+                EnablePreScale="True"
                 ImageBuffer="{Binding UsbCamera.CurrentImageBuffer}"
                 InterpolationMode="HighQuality"
+                SourceResolutionHint="Fixed"
                 Stretch="UniformToFill"
                 StretchDirection="Both">
                 <ibv:ImageBufferView.DefaultBackground>
