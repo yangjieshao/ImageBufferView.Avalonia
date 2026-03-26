@@ -7,7 +7,6 @@ using Avalonia.Threading;
 using SkiaSharp;
 using System;
 using System.Buffers;
-using System.Diagnostics;
 using System.Threading;
 
 namespace ImageBufferView.Avalonia;
@@ -121,8 +120,7 @@ public partial class ImageBufferView : Control
     /// 源图片分辨率提示，用于优化缓冲区复用策略
     /// <list type="bullet">
     /// <item><description>Unknown：最保守模式，不复用缓冲区</description></item>
-    /// <item><description>Fixed：源图片分辨率固定，可复用所有缓冲区（性能提升 20-30%）</description></item>
-    /// <item><description>VariableLargerThanRender：源图片分辨率不固定但都大于渲染区，可复用目标缓冲区（性能提升 10-20%）</description></item>
+    /// <item><description>EnableReuse：启用智能缓冲区复用，自动检测分辨率变化（性能提升 10-30%）</description></item>
     /// </list>
     /// </summary>
     public SourceResolutionHint SourceResolutionHint
@@ -428,7 +426,7 @@ public partial class ImageBufferView : Control
     /// </summary>
     private void ClearBackBuffer()
     {
-        WriteableBitmap? bitmapToDispose = null;
+        WriteableBitmap? bitmapToDispose;
 
         lock (_backBufferLock)
         {
@@ -495,7 +493,7 @@ public partial class ImageBufferView : Control
         if (!_cachedEnablePreScale || renderSize.Width <= 0 || renderSize.Height <= 0)
         {
             // 不缩放，直接转换为 Avalonia Bitmap
-            return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, sourceSize, resolutionHint);
+            return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, resolutionHint);
         }
 
         // 计算缩放比例（使用缓存的值，避免跨线程访问）
@@ -504,7 +502,7 @@ public partial class ImageBufferView : Control
         if (scale.X >= 1.0 && scale.Y >= 1.0)
         {
             // 图片小于或等于渲染区域，不需要预缩放（放大由 GPU 处理更高效）
-            return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, sourceSize, resolutionHint);
+            return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, resolutionHint);
         }
 
         // 图片大于渲染区域，预先缩小以减少渲染负担
@@ -517,25 +515,21 @@ public partial class ImageBufferView : Control
 
         if (resizedBitmap is null)
         {
-            return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, sourceSize, resolutionHint);
+            return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, resolutionHint);
         }
 
         // 对于缩放后的图片，目标尺寸是固定的（基于渲染区域），可以考虑复用
-        return ConvertSkBitmapToAvaloniaWithReuse(resizedBitmap, targetSize, resolutionHint, isScaled: true);
+        return ConvertSkBitmapToAvaloniaWithReuse(resizedBitmap, resolutionHint);
     }
 
     /// <summary>
     /// 将 SKBitmap 转换为 Avalonia Bitmap，支持缓冲区复用（双缓冲方式）
     /// </summary>
     /// <param name="skBitmap">源 SKBitmap</param>
-    /// <param name="expectedSize">预期的输出尺寸</param>
     /// <param name="resolutionHint">分辨率提示</param>
-    /// <param name="isScaled">是否已经过缩放处理</param>
     private WriteableBitmap? ConvertSkBitmapToAvaloniaWithReuse(
         SKBitmap skBitmap,
-        PixelSize expectedSize,
-        SourceResolutionHint resolutionHint,
-        bool isScaled = false)
+        SourceResolutionHint resolutionHint)
     {
         var info = skBitmap.Info;
         var pixelFormat = info.ColorType switch
@@ -566,16 +560,8 @@ public partial class ImageBufferView : Control
             var height = bitmapToUse.Height;
             var currentSize = new PixelSize(width, height);
 
-            // 根据分辨率提示决定是否尝试复用后台缓冲区
-            var canReuse = resolutionHint switch
-            {
-                // Fixed 模式：源图片分辨率固定，可以复用（无论是否缩放）
-                SourceResolutionHint.Fixed => true,
-                // VariableLargerThanRender 模式：只有缩放后的图片可以复用（目标尺寸固定）
-                SourceResolutionHint.VariableLargerThanRender => isScaled,
-                // Unknown 模式：不复用
-                _ => false
-            };
+            // EnableReuse 模式：启用智能复用，自动检测机制会在分辨率变化时重置缓冲区
+            var canReuse = resolutionHint != SourceResolutionHint.Unknown;
 
             WriteableBitmap? bitmap = null;
 
