@@ -167,14 +167,14 @@ public partial class ImageBufferView : Control
     }
 
     /// <summary>
-    /// 原始像素缓冲格式（默认 Auto，即自动解码 JPEG/PNG 等编码格式）
+    /// 像素缓冲格式（默认 Encoded，即解码 JPEG/PNG 等编码格式）
     /// </summary>
     public static readonly StyledProperty<PixelBufferFormat> PixelBufferFormatProperty =
-        AvaloniaProperty.Register<ImageBufferView, PixelBufferFormat>(nameof(PixelBufferFormat), PixelBufferFormat.Auto);
+        AvaloniaProperty.Register<ImageBufferView, PixelBufferFormat>(nameof(PixelBufferFormat), PixelBufferFormat.Encoded);
 
     /// <summary>
-    /// 原始像素缓冲格式（默认 Auto，即自动解码 JPEG/PNG 等编码格式）。
-    /// 设置为非 Auto 时，<see cref="ImageBuffer"/> 应传入未编码的原始像素数据，
+    /// 像素缓冲格式（默认 Encoded，即解码 JPEG/PNG 等编码格式）。
+    /// 设置为非 Encoded 时，<see cref="ImageBuffer"/> 应传入未编码的原始像素数据，
     /// 且必须同时配置 <see cref="RawImageWidth"/> 和 <see cref="RawImageHeight"/>。
     /// </summary>
     public PixelBufferFormat PixelBufferFormat
@@ -184,13 +184,13 @@ public partial class ImageBufferView : Control
     }
 
     /// <summary>
-    /// 原始像素图像宽度（像素数）。当 <see cref="PixelBufferFormat"/> 不为 Auto 时必须设置。
+    /// 原始像素图像宽度（像素数）。当 <see cref="PixelBufferFormat"/> 不为 Encoded 时必须设置。
     /// </summary>
     public static readonly StyledProperty<int> RawImageWidthProperty =
         AvaloniaProperty.Register<ImageBufferView, int>(nameof(RawImageWidth), 0);
 
     /// <summary>
-    /// 原始像素图像宽度（像素数）。当 <see cref="PixelBufferFormat"/> 不为 Auto 时必须设置。
+    /// 原始像素图像宽度（像素数）。当 <see cref="PixelBufferFormat"/> 不为 Encoded 时必须设置。
     /// </summary>
     public int RawImageWidth
     {
@@ -199,13 +199,13 @@ public partial class ImageBufferView : Control
     }
 
     /// <summary>
-    /// 原始像素图像高度（像素数）。当 <see cref="PixelBufferFormat"/> 不为 Auto 时必须设置。
+    /// 原始像素图像高度（像素数）。当 <see cref="PixelBufferFormat"/> 不为 Encoded 时必须设置。
     /// </summary>
     public static readonly StyledProperty<int> RawImageHeightProperty =
         AvaloniaProperty.Register<ImageBufferView, int>(nameof(RawImageHeight), 0);
 
     /// <summary>
-    /// 原始像素图像高度（像素数）。当 <see cref="PixelBufferFormat"/> 不为 Auto 时必须设置。
+    /// 原始像素图像高度（像素数）。当 <see cref="PixelBufferFormat"/> 不为 Encoded 时必须设置。
     /// </summary>
     public int RawImageHeight
     {
@@ -647,7 +647,7 @@ public partial class ImageBufferView : Control
         SKBitmap? skBitmap;
         SKData? skData = null;
 
-        if (_cachedPixelBufferFormat != PixelBufferFormat.Auto)
+        if (_cachedPixelBufferFormat != PixelBufferFormat.Encoded)
         {
             // 原始像素格式（BGRA/RGBA/BGR/RGB/Gray 等），直接从缓冲区构建 SKBitmap
             skBitmap = CreateSkBitmapFromRaw(buffer, length,
@@ -998,9 +998,9 @@ public partial class ImageBufferView : Control
 public enum PixelBufferFormat
 {
     /// <summary>
-    /// 自动检测（适用于 JPEG/PNG 等标准编码格式，默认值）
+    /// 编码图片格式（适用于 JPEG/PNG 等标准编码格式，默认值）
     /// </summary>
-    Auto,
+    Encoded,
 
     /// <summary>
     /// BGRA 32 位（每像素 4 字节：蓝、绿、红、透明，预乘 Alpha）

@@ -40,9 +40,9 @@ xmlns:ibv="clr-namespace:ImageBufferView.Avalonia;assembly=ImageBufferView.Avalo
 | 属性 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `ImageBuffer`        | `ArraySegment<byte>?`     | `null`          | 图片二进制数据（JPEG/PNG 等编码格式，或原始像素流） |
-| `PixelBufferFormat`  | `PixelBufferFormat`       | `Auto`          | 原始像素格式（Auto 表示自动解码 JPEG/PNG 等） |
-| `RawImageWidth`      | `int`                     | `0`             | 原始像素图像宽度（PixelBufferFormat 非 Auto 时必填） |
-| `RawImageHeight`     | `int`                     | `0`             | 原始像素图像高度（PixelBufferFormat 非 Auto 时必填） |
+| `PixelBufferFormat`  | `PixelBufferFormat`       | `Encoded`       | 像素格式（Encoded 表示 JPEG/PNG 等编码格式） |
+| `RawImageWidth`      | `int`                     | `0`             | 原始像素图像宽度（PixelBufferFormat 非 Encoded 时必填） |
+| `RawImageHeight`     | `int`                     | `0`             | 原始像素图像高度（PixelBufferFormat 非 Encoded 时必填） |
 | `SourceView`         | `ImageBufferView?`        | `null`          | 复用其他 ImageBufferView 的画面 |
 | `Bitmap`             | `Bitmap?`                 | `null`          | 当前显示的 Bitmap（只读） |
 | `EnableOptimization` | `bool`                    | `true`          | 启用性能优化（预缩放 + 缓冲区复用） |
@@ -156,7 +156,7 @@ private void OnFrameArrived(byte[] bgraBytes, int width, int height)
 
 | 值        | 说明                              |
 |-----------|-----------------------------------|
-| `Auto`    | 自动解码（JPEG/PNG 等，默认值）    |
+| `Encoded` | 编码图片格式（JPEG/PNG 等，默认值）|
 | `Bgra32`  | BGRA 32 位（每像素 4 字节）        |
 | `Rgba32`  | RGBA 32 位（每像素 4 字节）        |
 | `Bgr24`   | BGR 24 位（每像素 3 字节，无 Alpha）|
