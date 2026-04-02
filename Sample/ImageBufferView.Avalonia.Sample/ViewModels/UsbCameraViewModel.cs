@@ -135,6 +135,39 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
         private bool _isPlaying;
 
         /// <summary>
+        /// 当前帧的像素缓冲格式，由当前选中的摄像头流参数决定
+        /// </summary>
+        public PixelBufferFormat CurrentPixelBufferFormat
+        {
+            get => _currentPixelBufferFormat;
+            set => this.RaiseAndSetIfChanged(ref _currentPixelBufferFormat, value);
+        }
+
+        private PixelBufferFormat _currentPixelBufferFormat = PixelBufferFormat.Encoded;
+
+        /// <summary>
+        /// 当前帧原始像素图像宽度（仅在非编码格式下有效）
+        /// </summary>
+        public int CurrentImageWidth
+        {
+            get => _currentImageWidth;
+            set => this.RaiseAndSetIfChanged(ref _currentImageWidth, value);
+        }
+
+        private int _currentImageWidth;
+
+        /// <summary>
+        /// 当前帧原始像素图像高度（仅在非编码格式下有效）
+        /// </summary>
+        public int CurrentImageHeight
+        {
+            get => _currentImageHeight;
+            set => this.RaiseAndSetIfChanged(ref _currentImageHeight, value);
+        }
+
+        private int _currentImageHeight;
+
+        /// <summary>
         /// 设备清单
         /// </summary>
         public ObservableCollection<CaptureDeviceDescriptor?> DeviceList
@@ -253,10 +286,28 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
                     && characteristicsModel is not null
                     && characteristicsModel.VideoCharacteristic is not null)
                 {
+                    var vc = characteristicsModel.VideoCharacteristic;
                     VideoResolutionChanged?.Invoke(this, CharacteristicList.IndexOf(characteristicsModel));
+
+                    // 将 FlashCap 的像素格式映射为 ImageBufferView 的 PixelBufferFormat
+                    var (pbFormat, transcodeFormat) = MapFlashCapFormat(vc.PixelFormat);
+                    CurrentPixelBufferFormat = pbFormat;
+
+                    // 对于非编码格式，需要提供图像宽高供 ImageBufferView 解析原始像素
+                    if (pbFormat != PixelBufferFormat.Encoded)
+                    {
+                        CurrentImageWidth  = vc.Width;
+                        CurrentImageHeight = vc.Height;
+                    }
+                    else
+                    {
+                        CurrentImageWidth  = 0;
+                        CurrentImageHeight = 0;
+                    }
+
                     // Open capture device:
                     _captureDevice = await Device.OpenAsync(
-                        characteristicsModel.VideoCharacteristic, TranscodeFormats.Auto,
+                        vc, transcodeFormat,
                         OnPixelBufferArrived);
 
                     if (_needStart)
@@ -266,10 +317,46 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
                     }
                 }
             }
-            catch 
+            catch
             {
                 // no use
             }
+        }
+
+        /// <summary>
+        /// 将 FlashCap <see cref="FlashCap.PixelFormats"/> 映射为
+        /// <see cref="PixelBufferFormat"/> 与对应的 <see cref="TranscodeFormats"/>。
+        /// <para>
+        /// 只有 Avalonia WriteableBitmap 原生支持直接内存复制（无需逐像素转换）的格式才使用
+        /// <see cref="TranscodeFormats.DoNotTranscode"/>：
+        /// <list type="bullet">
+        ///   <item>JPEG / PNG：保留原始编码数据，由 ImageBufferView 交给 SkiaSharp 解码。</item>
+        ///   <item>RGB24：Windows DIB 内存顺序为 BGR，对应 Bgr24，WriteableBitmap 原生支持，单次 MemoryCopy 即可。</item>
+        /// </list>
+        /// 其余格式（RGB8/15/16/32/ARGB32/UYVY/YUYV/NV12）均需逐像素转换，
+        /// 交由 FlashCap 以 <see cref="TranscodeFormats.Auto"/> 转码为 JPEG，
+        /// 作为 <see cref="PixelBufferFormat.Encoded"/> 处理，避免热路径上的像素转换循环。
+        /// </para>
+        /// </summary>
+        /// <param name="flashCapFormat">FlashCap 摄像头像素格式</param>
+        /// <returns>（ImageBufferView 像素格式, FlashCap 转码格式）</returns>
+        private static (PixelBufferFormat pbFormat, TranscodeFormats transcodeFormat)
+            MapFlashCapFormat(PixelFormats flashCapFormat)
+        {
+            return flashCapFormat switch
+            {
+                // 编码格式：直接传递原始编码数据，不转码
+                PixelFormats.JPEG => (PixelBufferFormat.Encoded, TranscodeFormats.DoNotTranscode),
+                PixelFormats.PNG  => (PixelBufferFormat.Encoded, TranscodeFormats.DoNotTranscode),
+
+                // WriteableBitmap 原生支持、无需逐像素转换的格式
+                // Windows DIB 的 RGB24 在内存中实际为 BGR 顺序，直接对应 Bgr24
+                PixelFormats.RGB24 => (PixelBufferFormat.Bgr24, TranscodeFormats.DoNotTranscode),
+
+                // 其余格式（RGB8/15/16/32/ARGB32/UYVY/YUYV/NV12）需要逐像素转换，
+                // WriteableBitmap 不原生支持，交由 FlashCap 转码为 JPEG 后以编码格式处理
+                _ => (PixelBufferFormat.Encoded, TranscodeFormats.Auto),
+            };
         }
 
         /// <summary>
@@ -278,8 +365,12 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
         /// <param name="bufferScope"> </param>
         private void OnPixelBufferArrived(PixelBufferScope bufferScope)
         {
-            CurrentImageBuffer = bufferScope.Buffer.ReferImage();//.ExtractImage();
-            //CurrentImageBuffer = bufferScope.Buffer.ExtractImage();
+            // ReferImage() 返回当前帧缓冲区的引用（零拷贝），适用于所有格式：
+            //   - 编码格式（JPEG/PNG）：返回完整的编码字节流
+            //   - 原始像素格式（Bgr24）：返回原始像素字节，由 ImageBufferView 负责直接内存复制
+            // 注意：每次回调返回同一 ArraySegment 对象实例（FlashCap 内部复用缓冲），
+            //       因此 CurrentImageBuffer 的 setter 不能使用 RaiseAndSetIfChanged。
+            CurrentImageBuffer = bufferScope.Buffer.ReferImage();
         }
 
         public async void Start()

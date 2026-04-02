@@ -834,8 +834,7 @@ public partial class ImageBufferView : Control
         PixelBufferFormat format, int imageWidth, int imageHeight,
         bool enableReuse)
     {
-        // 计算原始缓冲区的期望字节数与目标 PixelFormat
-        // 直接使用与源格式对应的 PixelFormats，避免格式转换
+        // 计算原始缓冲区的期望字节数、源每行字节数与目标 PixelFormat
         PixelFormat pixelFormat;
         int expectedLen;
         int srcBytesPerPixel;
@@ -852,6 +851,16 @@ public partial class ImageBufferView : Control
                 srcBytesPerPixel = 4;
                 expectedLen = imageWidth * imageHeight * 4;
                 break;
+            case PixelBufferFormat.Bgr32:
+                pixelFormat = PixelFormats.Bgr32;
+                srcBytesPerPixel = 4;
+                expectedLen = imageWidth * imageHeight * 4;
+                break;
+            case PixelBufferFormat.Rgb32:
+                pixelFormat = PixelFormats.Rgb32;
+                srcBytesPerPixel = 4;
+                expectedLen = imageWidth * imageHeight * 4;
+                break;
             case PixelBufferFormat.Bgr24:
                 pixelFormat = PixelFormats.Bgr24;
                 srcBytesPerPixel = 3;
@@ -861,6 +870,11 @@ public partial class ImageBufferView : Control
                 pixelFormat = PixelFormats.Rgb24;
                 srcBytesPerPixel = 3;
                 expectedLen = imageWidth * imageHeight * 3;
+                break;
+            case PixelBufferFormat.Rgb565:
+                pixelFormat = PixelFormats.Rgb565;
+                srcBytesPerPixel = 2;
+                expectedLen = imageWidth * imageHeight * 2;
                 break;
             case PixelBufferFormat.Gray8:
                 pixelFormat = PixelFormats.Gray8;
@@ -894,7 +908,7 @@ public partial class ImageBufferView : Control
             }
         }
 
-        // 含 Alpha 通道的格式（Bgra32/Rgba32）使用预乘 Alpha，不含 Alpha 的格式使用不透明
+        // 含预乘 Alpha 的格式使用 Premul，其余均不透明
         var alphaFormat = format is PixelBufferFormat.Bgra32 or PixelBufferFormat.Rgba32
             ? AlphaFormat.Premul
             : AlphaFormat.Opaque;
@@ -904,33 +918,24 @@ public partial class ImageBufferView : Control
         try
         {
             using var fb = bitmap.Lock();
-            var dstRowBytes = fb.RowBytes;
             var srcRowBytes = imageWidth * srcBytesPerPixel;
+            var dstRowBytes = fb.RowBytes;
+
+            // 源/目标行字节不对齐时，拒绝处理（调用方应改用 Encoded 路径）
+            if (dstRowBytes != srcRowBytes)
+            {
+                bitmap.Dispose();
+                return null;
+            }
 
             unsafe
             {
                 fixed (byte* src = buffer)
                 {
-                    var dst = (byte*)fb.Address;
-
-                    // 所有格式均使用 PixelFormats 对应原生格式，无需逐像素转换，直接内存复制
-                    if (dstRowBytes == srcRowBytes)
-                    {
-                        // 源/目标行字节完全对齐，单次 MemoryCopy 最优
-                        Buffer.MemoryCopy(src, dst, (long)dstRowBytes * imageHeight, (long)srcRowBytes * imageHeight);
-                    }
-                    else
-                    {
-                        // 逐行复制以兼容目标行对齐填充（stride padding）
-                        for (var row = 0; row < imageHeight; row++)
-                        {
-                            Buffer.MemoryCopy(
-                                src + row * srcRowBytes,
-                                dst + row * dstRowBytes,
-                                dstRowBytes,
-                                srcRowBytes);
-                        }
-                    }
+                    // 单次 MemoryCopy，无逐行循环
+                    Buffer.MemoryCopy(src, (byte*)fb.Address,
+                        (long)dstRowBytes * imageHeight,
+                        (long)srcRowBytes * imageHeight);
                 }
             }
 
@@ -944,9 +949,7 @@ public partial class ImageBufferView : Control
     }
 
     /// <summary>
-    /// 将原始像素缓冲区转换为 SKBitmap。
-    /// 对于有 Alpha 通道的格式（BGRA32/RGBA32/Gray8）直接内存复制；
-    /// 对于无 Alpha 通道的格式（BGR24/RGB24），逐像素转换为 BGRA32。
+    /// 将原始像素缓冲区转换为 SKBitmap（仅支持 Bgra32/Rgba32/Bgr24/Rgb24/Gray8）。
     /// </summary>
     /// <param name="buffer">包含原始像素数据的字节数组</param>
     /// <param name="length">有效字节数</param>
@@ -1052,6 +1055,66 @@ public partial class ImageBufferView : Control
                             dst[i * 4 + 2] = src[i * 3];     // R（来自 B）
                             dst[i * 4 + 3] = 255;             // A
                         }
+                    }
+                }
+                return bitmap;
+            }
+
+            case PixelBufferFormat.Bgr32:
+            {
+                // 内存布局：B G R X（X 为填充字节），直接作为 Bgra8888 Opaque 使用
+                var expectedLen = imageWidth * imageHeight * 4;
+                if (length < expectedLen)
+                {
+                    return null;
+                }
+
+                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Bgra8888, SKAlphaType.Opaque));
+                unsafe
+                {
+                    fixed (byte* src = buffer)
+                    {
+                        Buffer.MemoryCopy(src, (void*)bitmap.GetPixels(), expectedLen, expectedLen);
+                    }
+                }
+                return bitmap;
+            }
+
+            case PixelBufferFormat.Rgb32:
+            {
+                // 内存布局：R G B X，使用 SKColorType.Rgb888x 可直接内存复制
+                var expectedLen = imageWidth * imageHeight * 4;
+                if (length < expectedLen)
+                {
+                    return null;
+                }
+
+                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Rgb888x, SKAlphaType.Opaque));
+                unsafe
+                {
+                    fixed (byte* src = buffer)
+                    {
+                        Buffer.MemoryCopy(src, (void*)bitmap.GetPixels(), expectedLen, expectedLen);
+                    }
+                }
+                return bitmap;
+            }
+
+            case PixelBufferFormat.Rgb565:
+            {
+                // SKia 原生支持 Rgb565，直接内存复制
+                var expectedLen = imageWidth * imageHeight * 2;
+                if (length < expectedLen)
+                {
+                    return null;
+                }
+
+                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Rgb565, SKAlphaType.Opaque));
+                unsafe
+                {
+                    fixed (byte* src = buffer)
+                    {
+                        Buffer.MemoryCopy(src, (void*)bitmap.GetPixels(), expectedLen, expectedLen);
                     }
                 }
                 return bitmap;
@@ -1203,7 +1266,8 @@ public partial class ImageBufferView : Control
 }
 
 /// <summary>
-/// 原始像素缓冲格式，用于接收 BGRA/RGBA/BGR/RGB/Gray 等未编码的图像流
+/// 原始像素缓冲格式，对应 Avalonia.Platform.PixelFormats 中 WriteableBitmap 原生支持的格式子集。
+/// 不支持的格式（如 YUV 等）应在数据源端先编码为 JPEG/PNG，再以 <see cref="Encoded"/> 传入。
 /// </summary>
 public enum PixelBufferFormat
 {
@@ -1223,6 +1287,16 @@ public enum PixelBufferFormat
     Rgba32,
 
     /// <summary>
+    /// BGR 32 位（每像素 4 字节：蓝、绿、红、填充，无 Alpha）
+    /// </summary>
+    Bgr32,
+
+    /// <summary>
+    /// RGB 32 位（每像素 4 字节：红、绿、蓝、填充，无 Alpha）
+    /// </summary>
+    Rgb32,
+
+    /// <summary>
     /// BGR 24 位（每像素 3 字节：蓝、绿、红，无 Alpha）
     /// </summary>
     Bgr24,
@@ -1231,6 +1305,11 @@ public enum PixelBufferFormat
     /// RGB 24 位（每像素 3 字节：红、绿、蓝，无 Alpha）
     /// </summary>
     Rgb24,
+
+    /// <summary>
+    /// RGB 565（每像素 2 字节，打包格式：R[15:11] G[10:5] B[4:0]）
+    /// </summary>
+    Rgb565,
 
     /// <summary>
     /// 灰度 8 位（每像素 1 字节）
