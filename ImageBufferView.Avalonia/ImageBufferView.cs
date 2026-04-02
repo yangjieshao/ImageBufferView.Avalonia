@@ -1013,7 +1013,7 @@ public partial class ImageBufferView : Control
                         var g3 = (px >> 2) & 0x07;
                         var b2 = px & 0x03;
                         // 扩展到 8 位（replicate 高位填充低位）
-                        dstRow[col * 4 + 0] = (byte)((b2 << 6) | (b2 << 4) | (b2 << 2) | b2); // B: 2位→8位（位复制填充）
+                        dstRow[col * 4 + 0] = (byte)((b2 << 6) | (b2 << 4) | (b2 << 2) | b2); // B: 2位扩展至8位（位复制：b2b2b2b2）
                         dstRow[col * 4 + 1] = (byte)((g3 << 5) | (g3 << 2) | (g3 >> 1)); // G: 3位→8位
                         dstRow[col * 4 + 2] = (byte)((r3 << 5) | (r3 << 2) | (r3 >> 1)); // R: 3位→8位
                         dstRow[col * 4 + 3] = 255;
@@ -1098,10 +1098,10 @@ public partial class ImageBufferView : Control
                     var dstRow = dst + row * dstRowBytes;
                     for (var col = 0; col < imageWidth; col++)
                     {
-                        dstRow[col * 4 + 0] = srcRow[col * 4 + 3]; // B（源索引3）
-                        dstRow[col * 4 + 1] = srcRow[col * 4 + 2]; // G（源索引2）
-                        dstRow[col * 4 + 2] = srcRow[col * 4 + 1]; // R（源索引1）
-                        dstRow[col * 4 + 3] = srcRow[col * 4 + 0]; // A（源索引0）
+                        dstRow[col * 4 + 0] = srcRow[col * 4 + 3]; // B ← ARGB[3]=B
+                        dstRow[col * 4 + 1] = srcRow[col * 4 + 2]; // G ← ARGB[2]=G
+                        dstRow[col * 4 + 2] = srcRow[col * 4 + 1]; // R ← ARGB[1]=R
+                        dstRow[col * 4 + 3] = srcRow[col * 4 + 0]; // A ← ARGB[0]=A
                     }
                 }
                 break;
@@ -1365,7 +1365,7 @@ public partial class ImageBufferView : Control
                             var r3 = (px >> 5) & 0x07;
                             var g3 = (px >> 2) & 0x07;
                             var b2 = px & 0x03;
-                            dst[i * 4 + 0] = (byte)((b2 << 6) | (b2 << 4) | (b2 << 2) | b2); // B: 2位→8位（位复制填充）
+                            dst[i * 4 + 0] = (byte)((b2 << 6) | (b2 << 4) | (b2 << 2) | b2); // B: 2位扩展至8位（位复制：b2b2b2b2）
                             dst[i * 4 + 1] = (byte)((g3 << 5) | (g3 << 2) | (g3 >> 1));        // G: 3位→8位
                             dst[i * 4 + 2] = (byte)((r3 << 5) | (r3 << 2) | (r3 >> 1));        // R: 3位→8位
                             dst[i * 4 + 3] = 255;
@@ -1485,10 +1485,10 @@ public partial class ImageBufferView : Control
                         var total = imageWidth * imageHeight;
                         for (var i = 0; i < total; i++)
                         {
-                            dst[i * 4 + 0] = src[i * 4 + 3]; // B（源索引3）
-                            dst[i * 4 + 1] = src[i * 4 + 2]; // G（源索引2）
-                            dst[i * 4 + 2] = src[i * 4 + 1]; // R（源索引1）
-                            dst[i * 4 + 3] = src[i * 4 + 0]; // A（源索引0）
+                            dst[i * 4 + 0] = src[i * 4 + 3]; // B ← ARGB[3]=B
+                            dst[i * 4 + 1] = src[i * 4 + 2]; // G ← ARGB[2]=G
+                            dst[i * 4 + 2] = src[i * 4 + 1]; // R ← ARGB[1]=R
+                            dst[i * 4 + 3] = src[i * 4 + 0]; // A ← ARGB[0]=A
                         }
                     }
                 }

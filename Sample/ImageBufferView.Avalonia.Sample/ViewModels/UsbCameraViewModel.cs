@@ -326,10 +326,17 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
         /// <summary>
         /// 将 FlashCap <see cref="PixelFormats"/> 映射为
         /// <see cref="PixelBufferFormat"/> 与对应的 <see cref="TranscodeFormats"/>。
+        /// <para>
+        /// 只有 Avalonia WriteableBitmap 原生支持直接内存复制（无需逐像素转换）的格式才使用
+        /// <see cref="TranscodeFormats.DoNotTranscode"/>：
         /// <list type="bullet">
-        ///   <item>JPEG / PNG → Encoded，不转码（保留原始编码数据）</item>
-        ///   <item>其余格式 → 对应原始像素格式，不转码（由 ImageBufferView 负责解码）</item>
+        ///   <item>JPEG / PNG：保留原始编码数据，由 ImageBufferView 交给 SkiaSharp 解码。</item>
+        ///   <item>RGB24：Windows DIB 内存顺序为 BGR，对应 Bgr24，WriteableBitmap 原生支持，单次 MemoryCopy 即可。</item>
         /// </list>
+        /// 其余格式（RGB8/15/16/32/ARGB32/UYVY/YUYV/NV12）均需逐像素转换，
+        /// 交由 FlashCap 以 <see cref="TranscodeFormats.Auto"/> 转码为 JPEG，
+        /// 作为 <see cref="PixelBufferFormat.Encoded"/> 处理，避免热路径上的像素转换循环。
+        /// </para>
         /// </summary>
         /// <param name="flashCapFormat">FlashCap 摄像头像素格式</param>
         /// <returns>（ImageBufferView 像素格式, FlashCap 转码格式）</returns>
@@ -338,25 +345,16 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
         {
             return flashCapFormat switch
             {
-                // 编码格式：直接传递原始编码数据给 ImageBufferView
+                // 编码格式：直接传递原始编码数据，不转码
                 PixelFormats.JPEG => (PixelBufferFormat.Encoded, TranscodeFormats.DoNotTranscode),
                 PixelFormats.PNG  => (PixelBufferFormat.Encoded, TranscodeFormats.DoNotTranscode),
 
-                // RGB 系列：不转码，由 ImageBufferView 解析原始像素
-                // 注意：Windows DIB 中 RGB24/RGB32 在内存中实际为 BGR 顺序
-                PixelFormats.RGB8   => (PixelBufferFormat.Rgb8,   TranscodeFormats.DoNotTranscode),
-                PixelFormats.RGB15  => (PixelBufferFormat.Rgb15,  TranscodeFormats.DoNotTranscode),
-                PixelFormats.RGB16  => (PixelBufferFormat.Rgb16,  TranscodeFormats.DoNotTranscode),
-                PixelFormats.RGB24  => (PixelBufferFormat.Bgr24,  TranscodeFormats.DoNotTranscode),
-                PixelFormats.RGB32  => (PixelBufferFormat.Bgr32,  TranscodeFormats.DoNotTranscode),
-                PixelFormats.ARGB32 => (PixelBufferFormat.Argb32, TranscodeFormats.DoNotTranscode),
+                // WriteableBitmap 原生支持、无需逐像素转换的格式
+                // Windows DIB 的 RGB24 在内存中实际为 BGR 顺序，直接对应 Bgr24
+                PixelFormats.RGB24 => (PixelBufferFormat.Bgr24, TranscodeFormats.DoNotTranscode),
 
-                // YUV 系列：不转码，由 ImageBufferView 完成 YUV→RGB 转换
-                PixelFormats.UYVY => (PixelBufferFormat.Uyvy, TranscodeFormats.DoNotTranscode),
-                PixelFormats.YUYV => (PixelBufferFormat.Yuyv, TranscodeFormats.DoNotTranscode),
-                PixelFormats.NV12 => (PixelBufferFormat.Nv12, TranscodeFormats.DoNotTranscode),
-
-                // 未知或其他格式：回退到 Auto 转码（FlashCap 转为 JPEG），当作编码格式处理
+                // 其余格式（RGB8/15/16/32/ARGB32/UYVY/YUYV/NV12）需要逐像素转换，
+                // WriteableBitmap 不原生支持，交由 FlashCap 转码为 JPEG 后以编码格式处理
                 _ => (PixelBufferFormat.Encoded, TranscodeFormats.Auto),
             };
         }
