@@ -639,29 +639,25 @@ public partial class ImageBufferView : Control
     }
 
     /// <summary>
-    /// 使用 SkiaSharp 解码图片，并根据渲染区域进行预缩放优化，返回可复用的 WriteableBitmap 或 null
+    /// 使用 SkiaSharp 解码图片，并根据渲染区域进行预缩放优化，返回可复用的 WriteableBitmap 或 null。
+    /// 对原始像素格式（非 Encoded）且无需缩放的情况，直接写入 WriteableBitmap 以跳过中间 SKBitmap 分配。
     /// </summary>
     private WriteableBitmap? DecodeAndScaleBitmap(byte[] buffer, int length)
     {
-        // 根据缓存的格式决定解码路径
-        SKBitmap? skBitmap;
-        SKData? skData = null;
-
         if (_cachedPixelBufferFormat != PixelBufferFormat.Encoded)
         {
-            // 原始像素格式（BGRA/RGBA/BGR/RGB/Gray 等），直接从缓冲区构建 SKBitmap
-            skBitmap = CreateSkBitmapFromRaw(buffer, length,
-                _cachedPixelBufferFormat, _cachedRawImageWidth, _cachedRawImageHeight);
+            return DecodeAndScaleRawBitmap(buffer, length);
         }
-        else
-        {
-            // 编码格式（JPEG/PNG 等），使用 SkiaSharp 解码
-            skData = SKData.CreateCopy(new ReadOnlySpan<byte>(buffer, 0, length));
-            skBitmap = SKBitmap.Decode(skData);
-        }
+
+        // 编码格式（JPEG/PNG 等），使用 SkiaSharp 解码
+        SKData? skData = null;
+        SKBitmap? skBitmap = null;
 
         try
         {
+            skData = SKData.CreateCopy(new ReadOnlySpan<byte>(buffer, 0, length));
+            skBitmap = SKBitmap.Decode(skData);
+
             if (skBitmap is null)
             {
                 return null;
@@ -730,6 +726,267 @@ public partial class ImageBufferView : Control
         {
             skBitmap?.Dispose();
             skData?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// 处理原始像素格式（非 Encoded）的解码与缩放路径。
+    /// 无需缩放时直接写入 WriteableBitmap，跳过 SKBitmap 中间层；
+    /// 需要缩放时借助 SKBitmap.Resize 完成后再写入 WriteableBitmap。
+    /// </summary>
+    /// <param name="buffer">包含原始像素数据的字节数组</param>
+    /// <param name="length">有效字节数</param>
+    private WriteableBitmap? DecodeAndScaleRawBitmap(byte[] buffer, int length)
+    {
+        var format = _cachedPixelBufferFormat;
+        var imageWidth = _cachedRawImageWidth;
+        var imageHeight = _cachedRawImageHeight;
+
+        if (imageWidth <= 0 || imageHeight <= 0)
+        {
+            return null;
+        }
+
+        var sourceSize = new PixelSize(imageWidth, imageHeight);
+        var renderSize = _cachedRenderSize;
+        var stretch = _cachedStretch;
+        var stretchDirection = _cachedStretchDirection;
+        var enableOptimization = _cachedEnableOptimization;
+
+        // 检测源图片分辨率是否发生变化（如切换摄像头）
+        var lastSourceSize = _lastDecodedSourceSize;
+        if (lastSourceSize != default && lastSourceSize != sourceSize)
+        {
+            lock (_backBufferLock)
+            {
+                if (_backBuffer is not null && _backBufferSize != default)
+                {
+                    var oldBackBuffer = _backBuffer;
+                    _backBuffer = null;
+                    _backBufferSize = default;
+                    Dispatcher.UIThread.Post(() => oldBackBuffer?.Dispose(), DispatcherPriority.Background);
+                }
+            }
+        }
+        _lastDecodedSourceSize = sourceSize;
+
+        // 判断是否需要预缩放
+        var needsScale = enableOptimization && renderSize.Width > 0 && renderSize.Height > 0;
+        var targetWidth = imageWidth;
+        var targetHeight = imageHeight;
+
+        if (needsScale)
+        {
+            var scale = stretch.CalculateScaling(renderSize, new Size(imageWidth, imageHeight), stretchDirection);
+            if (scale.X >= 1.0 && scale.Y >= 1.0)
+            {
+                // 图片小于或等于渲染区域，不需要预缩放
+                needsScale = false;
+            }
+            else
+            {
+                targetWidth = Math.Max(1, (int)(imageWidth * scale.X));
+                targetHeight = Math.Max(1, (int)(imageHeight * scale.Y));
+            }
+        }
+
+        if (!needsScale)
+        {
+            // 快速路径：直接将原始像素写入 WriteableBitmap，完全跳过 SKBitmap 分配
+            return WriteRawDirectToWriteableBitmap(buffer, length, format, imageWidth, imageHeight, enableOptimization);
+        }
+
+        // 缩放路径：借助 SKBitmap 完成 resize，再写入 WriteableBitmap
+        var skBitmap = CreateSkBitmapFromRaw(buffer, length, format, imageWidth, imageHeight);
+        if (skBitmap is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var resized = skBitmap.Resize(new SKImageInfo(targetWidth, targetHeight), SKFilterQuality.Medium);
+            if (resized is null)
+            {
+                return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, enableOptimization);
+            }
+            return ConvertSkBitmapToAvaloniaWithReuse(resized, enableOptimization);
+        }
+        finally
+        {
+            skBitmap.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// 将原始像素缓冲区直接写入可复用的 WriteableBitmap，无需经过 SKBitmap 中间层。
+    /// 适用于原始像素格式且无需预缩放的高频渲染场景（如相机实时预览），可避免每帧额外分配 SKBitmap。
+    /// </summary>
+    /// <param name="buffer">包含原始像素数据的字节数组</param>
+    /// <param name="length">有效字节数</param>
+    /// <param name="format">原始像素格式</param>
+    /// <param name="imageWidth">图像宽度（像素）</param>
+    /// <param name="imageHeight">图像高度（像素）</param>
+    /// <param name="enableReuse">是否启用后台缓冲区复用</param>
+    /// <returns>成功返回 WriteableBitmap（调用方负责最终释放），失败返回 null</returns>
+    private WriteableBitmap? WriteRawDirectToWriteableBitmap(
+        byte[] buffer, int length,
+        PixelBufferFormat format, int imageWidth, int imageHeight,
+        bool enableReuse)
+    {
+        // 计算原始缓冲区的期望字节数与目标 PixelFormat
+        PixelFormat pixelFormat;
+        int expectedLen;
+
+        switch (format)
+        {
+            case PixelBufferFormat.Bgra32:
+                pixelFormat = PixelFormat.Bgra8888;
+                expectedLen = imageWidth * imageHeight * 4;
+                break;
+            case PixelBufferFormat.Rgba32:
+                pixelFormat = PixelFormat.Rgba8888;
+                expectedLen = imageWidth * imageHeight * 4;
+                break;
+            case PixelBufferFormat.Bgr24:
+            case PixelBufferFormat.Rgb24:
+                pixelFormat = PixelFormat.Bgra8888;
+                expectedLen = imageWidth * imageHeight * 3;
+                break;
+            case PixelBufferFormat.Gray8:
+                pixelFormat = PixelFormat.Bgra8888;
+                expectedLen = imageWidth * imageHeight;
+                break;
+            default:
+                return null;
+        }
+
+        if (length < expectedLen)
+        {
+            return null;
+        }
+
+        var currentSize = new PixelSize(imageWidth, imageHeight);
+        WriteableBitmap? bitmap = null;
+
+        if (enableReuse)
+        {
+            // 尝试从后台缓冲区获取可复用的 Bitmap
+            lock (_backBufferLock)
+            {
+                if (_backBuffer is not null &&
+                    _backBufferSize == currentSize &&
+                    _backBufferFormat == pixelFormat)
+                {
+                    bitmap = _backBuffer;
+                    _backBuffer = null;
+                }
+            }
+        }
+
+        bitmap ??= new WriteableBitmap(currentSize, new Vector(96, 96), pixelFormat, AlphaFormat.Premul);
+
+        try
+        {
+            using var fb = bitmap.Lock();
+            var dstRowBytes = fb.RowBytes;
+
+            unsafe
+            {
+                fixed (byte* src = buffer)
+                {
+                    var dst = (byte*)fb.Address;
+
+                    switch (format)
+                    {
+                        case PixelBufferFormat.Bgra32:
+                        case PixelBufferFormat.Rgba32:
+                        {
+                            // 源行字节与目标行字节相同时，单次 MemoryCopy 最优
+                            var srcRowBytes = imageWidth * 4;
+                            if (dstRowBytes == srcRowBytes)
+                            {
+                                Buffer.MemoryCopy(src, dst, dstRowBytes * imageHeight, srcRowBytes * imageHeight);
+                            }
+                            else
+                            {
+                                // 逐行复制以兼容目标行对齐填充
+                                for (var row = 0; row < imageHeight; row++)
+                                {
+                                    Buffer.MemoryCopy(
+                                        src + row * srcRowBytes,
+                                        dst + row * dstRowBytes,
+                                        dstRowBytes,
+                                        srcRowBytes);
+                                }
+                            }
+                            break;
+                        }
+
+                        case PixelBufferFormat.Bgr24:
+                        {
+                            // BGR24 → BGRA8888：逐像素扩展，填充 Alpha=255
+                            for (var row = 0; row < imageHeight; row++)
+                            {
+                                var srcRow = src + row * imageWidth * 3;
+                                var dstRow = dst + row * dstRowBytes;
+                                for (var col = 0; col < imageWidth; col++)
+                                {
+                                    dstRow[col * 4]     = srcRow[col * 3];     // B
+                                    dstRow[col * 4 + 1] = srcRow[col * 3 + 1]; // G
+                                    dstRow[col * 4 + 2] = srcRow[col * 3 + 2]; // R
+                                    dstRow[col * 4 + 3] = 255;                 // A
+                                }
+                            }
+                            break;
+                        }
+
+                        case PixelBufferFormat.Rgb24:
+                        {
+                            // RGB24 → BGRA8888：逐像素交换 R/B，填充 Alpha=255
+                            for (var row = 0; row < imageHeight; row++)
+                            {
+                                var srcRow = src + row * imageWidth * 3;
+                                var dstRow = dst + row * dstRowBytes;
+                                for (var col = 0; col < imageWidth; col++)
+                                {
+                                    dstRow[col * 4]     = srcRow[col * 3 + 2]; // B（源 RGB24 的 R 通道）
+                                    dstRow[col * 4 + 1] = srcRow[col * 3 + 1]; // G
+                                    dstRow[col * 4 + 2] = srcRow[col * 3];     // R（源 RGB24 的 B 通道）
+                                    dstRow[col * 4 + 3] = 255;                 // A
+                                }
+                            }
+                            break;
+                        }
+
+                        case PixelBufferFormat.Gray8:
+                        {
+                            // Gray8 → BGRA8888：灰度值展开到三通道，填充 Alpha=255
+                            for (var row = 0; row < imageHeight; row++)
+                            {
+                                var srcRow = src + row * imageWidth;
+                                var dstRow = dst + row * dstRowBytes;
+                                for (var col = 0; col < imageWidth; col++)
+                                {
+                                    var gray = srcRow[col];
+                                    dstRow[col * 4]     = gray; // B
+                                    dstRow[col * 4 + 1] = gray; // G
+                                    dstRow[col * 4 + 2] = gray; // R
+                                    dstRow[col * 4 + 3] = 255;  // A
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+
+            return bitmap;
+        }
+        catch
+        {
+            bitmap.Dispose();
+            return null;
         }
     }
 
