@@ -33,6 +33,7 @@ xmlns:ibv="clr-namespace:ImageBufferView.Avalonia;assembly=ImageBufferView.Avalo
 | 📹 **摄像头实时预览** | USB/IP 摄像头视频流显示 | 默认配置即可 |
 | 🎬 **图片序列播放**   | 连续图片帧播放、动画    | 默认配置即可 |
 | 🖼️ **高频图片刷新**   | 需要频繁更新显示的图片  | 默认配置即可 |
+| 🔁 **原地缓冲区更新** | 数据源直接写入同一块内存（不替换 `ArraySegment` 对象） | 绑定并递增 `FrameIndex` |
 | 📊 **静态图片显示**   | 偶尔更新的图片          | `EnableOptimization="False"` |
 
 ## ⚙️ 属性说明
@@ -40,6 +41,7 @@ xmlns:ibv="clr-namespace:ImageBufferView.Avalonia;assembly=ImageBufferView.Avalo
 | 属性 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `ImageBuffer`        | `ArraySegment<byte>?`     | `null`          | 图片二进制数据（JPEG/PNG 等编码格式，或原始像素流） |
+| `FrameIndex`         | `long`                    | `0`             | 帧号。数据源原地修改缓冲区内容时，递增此值可强制刷新画面（详见[原地缓冲区更新](#原地缓冲区更新frameindex)） |
 | `PixelBufferFormat`  | `PixelBufferFormat`       | `Encoded`       | 像素格式（Encoded 表示 JPEG/PNG 等编码格式） |
 | `RawImageWidth`      | `int`                     | `0`             | 原始像素图像宽度（PixelBufferFormat 非 Encoded 时必填） |
 | `RawImageHeight`     | `int`                     | `0`             | 原始像素图像高度（PixelBufferFormat 非 Encoded 时必填） |
@@ -162,6 +164,52 @@ private void OnFrameArrived(byte[] bgraBytes, int width, int height)
 | `Bgr24`   | BGR 24 位（每像素 3 字节，无 Alpha）|
 | `Rgb24`   | RGB 24 位（每像素 3 字节，无 Alpha）|
 | `Gray8`   | 灰度 8 位（每像素 1 字节）         |
+
+### 原地缓冲区更新（FrameIndex）
+
+某些数据源（如共享内存相机 SDK、硬件采集卡 DMA 回调）会**直接覆写同一块内存**，而不会分配新的字节数组。此时 `ImageBuffer` 属性的引用没有发生变化，控件不会感知到内容更新，画面会"冻住"。
+
+通过绑定并递增 `FrameIndex` 可强制触发重新解码刷新：
+
+```xml
+<!-- XAML：同时绑定 ImageBuffer 和 FrameIndex -->
+<ibv:ImageBufferView
+    PixelBufferFormat="Bgr24"
+    RawImageWidth="1920"
+    RawImageHeight="1080"
+    ImageBuffer="{Binding SharedBuffer}"
+    FrameIndex="{Binding FrameIndex}"
+    Stretch="UniformToFill" />
+```
+
+```csharp
+public partial class CameraViewModel : ObservableObject
+{
+    // 固定复用同一块字节数组，避免频繁 GC
+    private readonly byte[] _rawBuffer = new byte[1920 * 1080 * 3];
+
+    [ObservableProperty]
+    private ArraySegment<byte> sharedBuffer;
+
+    [ObservableProperty]
+    private long frameIndex;
+
+    public CameraViewModel()
+    {
+        // 初始化时绑定固定缓冲区，后续不再替换对象
+        SharedBuffer = new ArraySegment<byte>(_rawBuffer);
+    }
+
+    // 硬件 SDK 回调：新帧已直接写入 _rawBuffer
+    private void OnFrameArrived()
+    {
+        // ImageBuffer 引用未变，仅递增帧号即可触发控件刷新
+        FrameIndex++;
+    }
+}
+```
+
+> **提示**：`FrameIndex` 只需保证每次新帧到来时值发生变化即可，通常使用单调递增计数器（`FrameIndex++`）。若数据源同时会替换 `ImageBuffer` 对象，则无需使用 `FrameIndex`，正常绑定 `ImageBuffer` 即可。
 
 ## 🔧 性能优化说明
 
