@@ -36,6 +36,7 @@ public partial class ImageBufferView : Control
         PixelBufferFormatProperty.Changed.AddClassHandler<ImageBufferView>(RawFormatChanged);
         RawImageWidthProperty.Changed.AddClassHandler<ImageBufferView>(RawFormatChanged);
         RawImageHeightProperty.Changed.AddClassHandler<ImageBufferView>(RawFormatChanged);
+        FrameIndexProperty.Changed.AddClassHandler<ImageBufferView>(FrameIndexChanged);
     }
 
     public ImageBufferView()
@@ -213,6 +214,23 @@ public partial class ImageBufferView : Control
         set => SetValue(RawImageHeightProperty, value);
     }
 
+    /// <summary>
+    /// 帧号（单调递增计数器）。当数据源直接修改 <see cref="ImageBuffer"/> 内部字节内容、
+    /// 而非替换为新对象时，可通过更新此属性强制触发画面刷新。
+    /// </summary>
+    public static readonly StyledProperty<long> FrameIndexProperty =
+        AvaloniaProperty.Register<ImageBufferView, long>(nameof(FrameIndex), 0L);
+
+    /// <summary>
+    /// 帧号（单调递增计数器）。当数据源直接修改 <see cref="ImageBuffer"/> 内部字节内容、
+    /// 而非替换为新对象时，可通过更新此属性强制触发画面刷新。
+    /// </summary>
+    public long FrameIndex
+    {
+        get => GetValue(FrameIndexProperty);
+        set => SetValue(FrameIndexProperty, value);
+    }
+
     private static void InterpolationModeChanged(ImageBufferView sender, AvaloniaPropertyChangedEventArgs e)
     {
         if (e.NewValue is BitmapInterpolationMode mode)
@@ -331,9 +349,26 @@ public partial class ImageBufferView : Control
     /// </summary>
     private static void RawFormatChanged(ImageBufferView sender, AvaloniaPropertyChangedEventArgs e)
     {
-        if (sender is { _isAttached: true, ImageBuffer: { Array: not null, Count: > 0 } buffer })
+        sender.TryDecodeCurrentBuffer();
+    }
+
+    /// <summary>
+    /// 当帧号变化时，若控件已附加且 ImageBuffer 有内容，则强制触发一次解码刷新。
+    /// 适用于数据源直接修改 <see cref="ImageBuffer"/> 内部字节内容而不替换对象的场景。
+    /// </summary>
+    private static void FrameIndexChanged(ImageBufferView sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        sender.TryDecodeCurrentBuffer();
+    }
+
+    /// <summary>
+    /// 若控件已附加到可视树且 <see cref="ImageBuffer"/> 有有效内容，则触发一次解码刷新。
+    /// </summary>
+    private void TryDecodeCurrentBuffer()
+    {
+        if (this is { _isAttached: true, ImageBuffer: { Array: not null, Count: > 0 } buffer })
         {
-            sender.TryStartDecode(buffer);
+            TryStartDecode(buffer);
         }
     }
 
