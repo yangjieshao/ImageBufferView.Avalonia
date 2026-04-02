@@ -32,11 +32,59 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
         private ArraySegment<byte>? _ImageBuffer;
 
         /// <summary>
+        /// </summary>
+        public ArraySegment<byte>? ImageBgr24Buffer
+        {
+            get => _ImageBgr24Buffer;
+            set => this.RaiseAndSetIfChanged(ref _ImageBgr24Buffer, value);
+        }
+        private ArraySegment<byte>? _ImageBgr24Buffer;
+        /// <summary>
+        /// </summary>
+        public ArraySegment<byte>? ImageBgra32Buffer
+        {
+            get => _ImageBgra32Buffer;
+            set => this.RaiseAndSetIfChanged(ref _ImageBgra32Buffer, value);
+        }
+        private ArraySegment<byte>? _ImageBgra32Buffer;
+        /// <summary>
+        /// </summary>
+        public ArraySegment<byte>? ImageRgb24Buffer
+        {
+            get => _ImageRgb24Buffer;
+            set => this.RaiseAndSetIfChanged(ref _ImageRgb24Buffer, value);
+        }
+        private ArraySegment<byte>? _ImageRgb24Buffer;
+        /// <summary>
+        /// </summary>
+        public ArraySegment<byte>? ImageRgba32Buffer
+        {
+            get => _ImageRgba32Buffer;
+            set => this.RaiseAndSetIfChanged(ref _ImageRgba32Buffer, value);
+        }
+        private ArraySegment<byte>? _ImageRgba32Buffer;
+
+        /// <summary>
         /// 待播放图片流缓存
         /// </summary>
 
-        private readonly List<ArraySegment<byte>> _buffers = [];
+        private readonly List<ArraySegment<byte>> _encoded_buffers = [];
+        /// <summary>
+        /// </summary>
 
+        private readonly List<ArraySegment<byte>> _bgr24_buffers = [];
+        /// <summary>
+        /// </summary>
+
+        private readonly List<ArraySegment<byte>> _bgra32_buffers = [];
+        /// <summary>
+        /// </summary>
+
+        private readonly List<ArraySegment<byte>> _rgb24_buffers = [];
+        /// <summary>
+        /// </summary>
+
+        private readonly List<ArraySegment<byte>> _rgba32_buffers = [];
         /// <summary>
         /// 摄像头
         /// </summary>
@@ -89,7 +137,265 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
 
         private async ValueTask LoadImage(CancellationToken token)
         {
-            if (_buffers.Count == 0)
+            await LoadBgr24Buffer(token);
+            await LoadBgra32Buffer(token);
+            await LoadRgb24Buffer(token);
+            await LoadRgba32Buffer(token);
+            await LoadEncodedBuffer(token);
+
+            RunBgr24Buffer(token);
+            //RunBgra32Buffer(token);
+            //RunRgb24Buffer(token);
+            //RunRgba32Buffer(token);
+            //RunEncodedBuffer(token);
+        }
+
+
+        public void RunBgr24Buffer(CancellationToken token)
+        {
+            if (_bgr24_buffers.Count == 0)
+            {
+                return;
+            }
+            Task.Run(async () =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    foreach (var buffer in _bgr24_buffers.TakeWhile(buffer => !token.IsCancellationRequested))
+                    {
+                        ImageBuffer = buffer;
+                        try
+                        {
+                            await Task.Delay(1, token);
+                        }
+                        catch (Exception)
+                        {
+                            // ignored
+                        }
+                    }
+                }
+            });
+        }
+        public void RunBgra32Buffer(CancellationToken token)
+        {
+            if (_bgra32_buffers.Count == 0)
+            {
+                return;
+            }
+            Task.Run(async () =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    foreach (var buffer in _bgra32_buffers.TakeWhile(buffer => !token.IsCancellationRequested))
+                    {
+                        ImageBuffer = buffer;
+                        try
+                        {
+                            await Task.Delay(1, token);
+                        }
+                        catch (Exception)
+                        {
+                            // ignored
+                        }
+                    }
+                }
+            });
+        }
+        public void RunRgb24Buffer(CancellationToken token)
+        {
+            if (_rgb24_buffers.Count == 0)
+            {
+                return;
+            }
+            Task.Run(async () =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    foreach (var buffer in _rgb24_buffers.TakeWhile(buffer => !token.IsCancellationRequested))
+                    {
+                        ImageBuffer = buffer;
+                        try
+                        {
+                            await Task.Delay(1, token);
+                        }
+                        catch (Exception)
+                        {
+                            // ignored
+                        }
+                    }
+                }
+            });
+        }
+        public void RunRgba32Buffer(CancellationToken token)
+        {
+            if (_rgba32_buffers.Count == 0)
+            {
+                return;
+            }
+            Task.Run(async () =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    foreach (var buffer in _rgba32_buffers.TakeWhile(buffer => !token.IsCancellationRequested))
+                    {
+                        ImageBuffer = buffer;
+                        try
+                        {
+                            await Task.Delay(1, token);
+                        }
+                        catch (Exception)
+                        {
+                            // ignored
+                        }
+                    }
+                }
+            });
+        }
+        public void RunEncodedBuffer(CancellationToken token)
+        {
+            if (_encoded_buffers.Count == 0)
+            {
+                return;
+            }
+            Task.Run(async () =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    foreach (var buffer in _encoded_buffers.TakeWhile(buffer => !token.IsCancellationRequested))
+                    {
+                        ImageBuffer = buffer;
+                        try
+                        {
+                            await Task.Delay(1, token);
+                        }
+                        catch (Exception)
+                        {
+                            // ignored
+                        }
+                    }
+                }
+            });
+        }
+
+        private async Task LoadBgr24Buffer(CancellationToken token)
+        {
+            if (_bgr24_buffers.Count == 0)
+            {
+                if (!Directory.Exists("Raw"))
+                {
+                    return;
+                }
+                var files = new DirectoryInfo("Raw").GetFiles("bgr24*.raw");
+
+                // Ready buffers
+                foreach (var file in files)
+                {
+                    if (token.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    try
+                    {
+                        var buffer = await File.ReadAllBytesAsync(file.FullName, token);
+                        _bgr24_buffers.Add(buffer);
+                    }
+                    catch (Exception)
+                    {
+                        // ignored
+                    }
+                }
+            }
+        }
+        private async Task LoadBgra32Buffer(CancellationToken token)
+        {
+            if (_bgra32_buffers.Count == 0)
+            {
+                if (!Directory.Exists("Raw"))
+                {
+                    return;
+                }
+                var files = new DirectoryInfo("Raw").GetFiles("bgra32*.raw");
+
+                // Ready buffers
+                foreach (var file in files)
+                {
+                    if (token.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    try
+                    {
+                        var buffer = await File.ReadAllBytesAsync(file.FullName, token);
+                        _bgra32_buffers.Add(buffer);
+                    }
+                    catch (Exception)
+                    {
+                        // ignored
+                    }
+                }
+            }
+        }
+        private async Task LoadRgb24Buffer(CancellationToken token)
+        {
+            if (_rgb24_buffers.Count == 0)
+            {
+                if (!Directory.Exists("Raw"))
+                {
+                    return;
+                }
+                var files = new DirectoryInfo("Raw").GetFiles("rgb24*.raw");
+
+                // Ready buffers
+                foreach (var file in files)
+                {
+                    if (token.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    try
+                    {
+                        var buffer = await File.ReadAllBytesAsync(file.FullName, token);
+                        _rgb24_buffers.Add(buffer);
+                    }
+                    catch (Exception)
+                    {
+                        // ignored
+                    }
+                }
+            }
+        }
+        private async Task LoadRgba32Buffer(CancellationToken token)
+        {
+            if (_rgba32_buffers.Count == 0)
+            {
+                if (!Directory.Exists("Raw"))
+                {
+                    return;
+                }
+                var files = new DirectoryInfo("Raw").GetFiles("rgba32*.raw");
+
+                // Ready buffers
+                foreach (var file in files)
+                {
+                    if (token.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    try
+                    {
+                        var buffer = await File.ReadAllBytesAsync(file.FullName, token);
+                        _rgba32_buffers.Add(buffer);
+                    }
+                    catch (Exception)
+                    {
+                        // ignored
+                    }
+                }
+            }
+        }
+        private async Task LoadEncodedBuffer(CancellationToken token)
+        {
+            if (_encoded_buffers.Count == 0)
             {
                 if (!Directory.Exists("Images"))
                 {
@@ -107,27 +413,7 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
                     try
                     {
                         var buffer = await File.ReadAllBytesAsync(file.FullName, token);
-                        _buffers.Add(buffer);
-                    }
-                    catch (Exception)
-                    {
-                        // ignored
-                    }
-                }
-            }
-
-            if (_buffers.Count == 0)
-            {
-                return;
-            }
-            while (!token.IsCancellationRequested)
-            {
-                foreach (var buffer in _buffers.TakeWhile(buffer => !token.IsCancellationRequested))
-                {
-                    ImageBuffer = buffer;
-                    try
-                    {
-                        await Task.Delay(1, token);
+                        _encoded_buffers.Add(buffer);
                     }
                     catch (Exception)
                     {
@@ -136,5 +422,6 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
                 }
             }
         }
+
     }
 }

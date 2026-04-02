@@ -29,9 +29,13 @@
     </ItemGroup>
 
     <ItemGroup>
-        <None Include="..\Images\*.jpeg">
-            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-        </None>
-        <None Update="..\Images\*.*" Link="Images\%(Filename)%(Extension)" />
+		<None Include="..\Images\*.jpeg">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+		<None Include="..\Raw\*.raw">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+		<None Update="..\Images\*.*" Link="Images\%(Filename)%(Extension)" />
+		<None Update="..\Raw\*.*" Link="Raw\%(Filename)%(Extension)" />
     </ItemGroup>
 </Project>

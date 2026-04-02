@@ -119,6 +119,9 @@
                 DefaultBackground="Black"
                 ImageBuffer="{Binding ImageBuffer}"
                 InterpolationMode="LowQuality"
+                PixelBufferFormat="Bgr24"
+                RawImageHeight="128"
+                RawImageWidth="128"
                 Stretch="None"
                 StretchDirection="Both" />
 
