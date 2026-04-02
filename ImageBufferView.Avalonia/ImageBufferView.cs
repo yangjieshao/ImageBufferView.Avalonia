@@ -20,7 +20,7 @@ public partial class ImageBufferView : Control
     /// <summary>
     /// 并发解码数 = CPU 核心数（充分利用多核）
     /// </summary>
-    private static readonly SemaphoreSlim s_decodeSemaphore =
+    private static readonly SemaphoreSlim SDecodeSemaphore =
         new(Environment.ProcessorCount, Environment.ProcessorCount);
 
     static ImageBufferView()
@@ -38,7 +38,7 @@ public partial class ImageBufferView : Control
         RawImageHeightProperty.Changed.AddClassHandler<ImageBufferView>(RawFormatChanged);
     }
 
-    public ImageBufferView() : base()
+    public ImageBufferView()
     {
         RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.MediumQuality);
     }
@@ -331,7 +331,7 @@ public partial class ImageBufferView : Control
     /// </summary>
     private static void RawFormatChanged(ImageBufferView sender, AvaloniaPropertyChangedEventArgs e)
     {
-        if (sender._isAttached && sender.ImageBuffer is { Array: not null, Count: > 0 } buffer)
+        if (sender is { _isAttached: true, ImageBuffer: { Array: not null, Count: > 0 } buffer })
         {
             sender.TryStartDecode(buffer);
         }
@@ -403,7 +403,7 @@ public partial class ImageBufferView : Control
             try
             {
                 // 尝试获取信号量，超时则跳过此帧（避免积压）
-                if (!s_decodeSemaphore.Wait(0, token))
+                if (!SDecodeSemaphore.Wait(0, token))
                 {
                     // 信号量不可用，丢弃此帧，继续处理下一帧
                     ArrayPool<byte>.Shared.Return(buffer);
@@ -423,7 +423,7 @@ public partial class ImageBufferView : Control
                 }
                 finally
                 {
-                    s_decodeSemaphore.Release();
+                    SDecodeSemaphore.Release();
                     ArrayPool<byte>.Shared.Return(buffer);
                 }
             }
@@ -701,7 +701,7 @@ public partial class ImageBufferView : Control
             // 计算缩放比例（使用缓存的值，避免跨线程访问）
             var scale = stretch.CalculateScaling(renderSize, new Size(sourceWidth, sourceHeight), stretchDirection);
 
-            if (scale.X >= 1.0 && scale.Y >= 1.0)
+            if (scale is { X: >= 1.0, Y: >= 1.0 })
             {
                 // 图片小于或等于渲染区域，不需要预缩放（放大由 GPU 处理更高效）
                 return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, enableOptimization);
@@ -771,14 +771,14 @@ public partial class ImageBufferView : Control
         _lastDecodedSourceSize = sourceSize;
 
         // 判断是否需要预缩放
-        var needsScale = enableOptimization && renderSize.Width > 0 && renderSize.Height > 0;
+        var needsScale = enableOptimization && renderSize is { Width: > 0, Height: > 0 };
         var targetWidth = imageWidth;
         var targetHeight = imageHeight;
 
         if (needsScale)
         {
             var scale = stretch.CalculateScaling(renderSize, new Size(imageWidth, imageHeight), stretchDirection);
-            if (scale.X >= 1.0 && scale.Y >= 1.0)
+            if (scale is { X: >= 1.0, Y: >= 1.0 })
             {
                 // 图片小于或等于渲染区域，不需要预缩放
                 needsScale = false;
