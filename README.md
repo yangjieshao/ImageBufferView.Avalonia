@@ -186,25 +186,36 @@ private void OnFrameArrived(byte[] bgraBytes, int width, int height)
 public partial class CameraViewModel : ObservableObject
 {
     // 固定复用同一块字节数组，避免频繁 GC
-    private readonly byte[] _rawBuffer = new byte[1920 * 1080 * 3];
+    public ArraySegment<byte> CurrentImageBuffer
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    }
 
-    [ObservableProperty]
-    private ArraySegment<byte> sharedBuffer;
-
-    [ObservableProperty]
-    private long frameIndex;
+    public long FrameIndex
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    }
 
     public CameraViewModel()
     {
-        // 初始化时绑定固定缓冲区，后续不再替换对象
-        SharedBuffer = new ArraySegment<byte>(_rawBuffer);
     }
 
     // 硬件 SDK 回调：新帧已直接写入 _rawBuffer
-    private void OnFrameArrived()
+    private void OnFrameArrived(ArraySegment<byte> newFrame)
     {
-        // ImageBuffer 引用未变，仅递增帧号即可触发控件刷新
-        FrameIndex++;
+        // 保证一次新帧到来时 只刷新一次画面
+        if (ReferenceEquals(newFrame.Array, CurrentImageBuffer.Array)
+            && newFrame.Offset == CurrentImageBuffer.Offset
+            && newFrame.Count == CurrentImageBuffer.Count)
+        {
+            FrameIndex++;
+        }
+        else
+        {
+            CurrentImageBuffer = newFrame;   
+        }
     }
 }
 ```

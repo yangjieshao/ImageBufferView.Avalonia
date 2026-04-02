@@ -19,7 +19,8 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
     {
         public VideoCharacteristics? VideoCharacteristic { init; get; }
 
-        public string Name => VideoCharacteristic == null ? "无流方案"
+        public string Name => VideoCharacteristic == null
+            ? "无流方案"
             : $"{VideoCharacteristic.Width}x{VideoCharacteristic.Height} [{VideoCharacteristic.PixelFormat},{(double)VideoCharacteristic.FramesPerSecond:F0}fps]";
     }
 
@@ -75,13 +76,15 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
                     }
                     else
                     {
-                        Device = defaultDevcieIndex + 1 < DeviceList.Count ? DeviceList[defaultDevcieIndex + 1] : DeviceList.FirstOrDefault();
+                        Device = defaultDevcieIndex + 1 < DeviceList.Count
+                            ? DeviceList[defaultDevcieIndex + 1]
+                            : DeviceList.FirstOrDefault();
                     }
 
                     this.WhenAnyValue(x => x.Device).Do(OnDeviceListChanged).Subscribe();
                     //this.WhenAnyValue(x => x.Characteristic).Do(OnCharacteristicsChangedAsync).Subscribe();
                     this.WhenAnyValue(x => x.Characteristic)
-                        .Do(model => _ =OnCharacteristicsChangedAsync(model)).Subscribe();
+                        .Do(model => _ = OnCharacteristicsChangedAsync(model)).Subscribe();
                 });
             });
         }
@@ -219,7 +222,8 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
                 var list = new List<VideoCharacteristicModel>();
                 foreach (var characteristic in device.Characteristics)
                 {
-                    if (characteristic.PixelFormat == PixelFormats.Unknown)
+                    if (characteristic.PixelFormat == PixelFormats.Unknown
+                        || characteristic.FramesPerSecond is { Denominator: 1, Numerator: 1 })
                     {
                         continue;
                     }
@@ -229,7 +233,9 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
                     });
                 }
 
-                CharacteristicList.AddRange(list.OrderByDescending(r => r.VideoCharacteristic?.FramesPerSecond));
+                CharacteristicList.AddRange(list.OrderByDescending(r => r.VideoCharacteristic?.FramesPerSecond)
+                    .ThenByDescending(r => r.VideoCharacteristic?.Width )
+                    .ThenByDescending(r => r.VideoCharacteristic?.RawPixelFormat));
 
                 if (_defaultVideoResolution < 0)
                 {
@@ -237,7 +243,9 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
                 }
                 else
                 {
-                    Characteristic = _defaultVideoResolution < CharacteristicList.Count ? CharacteristicList[_defaultVideoResolution] : CharacteristicList.FirstOrDefault();
+                    Characteristic = _defaultVideoResolution < CharacteristicList.Count
+                        ? CharacteristicList[_defaultVideoResolution]
+                        : CharacteristicList.FirstOrDefault();
                 }
             }
             else
@@ -284,12 +292,12 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
                     // 对于非编码格式，需要提供图像宽高供 ImageBufferView 解析原始像素
                     if (pbFormat != PixelBufferFormat.Encoded)
                     {
-                        CurrentImageWidth  = vc.Width;
+                        CurrentImageWidth = vc.Width;
                         CurrentImageHeight = vc.Height;
                     }
                     else
                     {
-                        CurrentImageWidth  = 0;
+                        CurrentImageWidth = 0;
                         CurrentImageHeight = 0;
                     }
 
@@ -335,7 +343,7 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
             {
                 // 编码格式：直接传递原始编码数据，不转码
                 PixelFormats.JPEG => (PixelBufferFormat.Encoded, TranscodeFormats.DoNotTranscode),
-                PixelFormats.PNG  => (PixelBufferFormat.Encoded, TranscodeFormats.DoNotTranscode),
+                PixelFormats.PNG => (PixelBufferFormat.Encoded, TranscodeFormats.DoNotTranscode),
 
                 // WriteableBitmap 原生支持、无需逐像素转换的格式
                 // Windows DIB 的 RGB24 在内存中实际为 BGR 顺序，直接对应 Bgr24
@@ -350,14 +358,25 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
         /// <summary>
         /// 实时帧数据回调
         /// </summary>
-        /// <param name="bufferScope"> </param>
         private void OnPixelBufferArrived(PixelBufferScope bufferScope)
         {
             // ReferImage() 返回当前帧缓冲区的引用（零拷贝），适用于所有格式：
             //   - 编码格式（JPEG/PNG）：返回完整的编码字节流
             //   - 原始像素格式（Bgr24）：返回原始像素字节，由 ImageBufferView 负责直接内存复制
-            CurrentImageBuffer = bufferScope.Buffer.ReferImage();
-            FrameIndex = bufferScope.Buffer.FrameIndex;
+
+            var newImageBuffer = bufferScope.Buffer.ReferImage();
+
+            // 保证一次新帧到来时 只刷新一次画面
+            if (ReferenceEquals(newImageBuffer.Array, CurrentImageBuffer.Array)
+                && newImageBuffer.Offset == CurrentImageBuffer.Offset
+                && newImageBuffer.Count == CurrentImageBuffer.Count)
+            {
+                FrameIndex = bufferScope.Buffer.FrameIndex;
+            }
+            else
+            {
+                CurrentImageBuffer = bufferScope.Buffer.ReferImage();
+            }
         }
 
         public async Task Start()
@@ -367,6 +386,7 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
             {
                 return;
             }
+
             await _captureDevice.StartAsync();
         }
 
