@@ -6,7 +6,6 @@ using ReactiveUI;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.Linq;
 using System.Reactive.Linq;
 using System.Threading.Tasks;
@@ -60,10 +59,7 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
                              // You could filter by device type and characteristics.
                              .Where(d => d.DeviceType != DeviceTypes.VideoForWindows)
                              .Where(d => !d.Name.Contains("Virtual", StringComparison.InvariantCultureIgnoreCase))
-                             .Where(d => d.Characteristics.Any(r =>
-                             {
-                                 return r.PixelFormat != PixelFormats.Unknown;
-                             })))
+                             .Where(d => d.Characteristics.Any(r => r.PixelFormat != PixelFormats.Unknown)))
                 {
                     devicesList.Add(descriptor);
                 }
@@ -98,11 +94,9 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
         /// </summary>
         public ArraySegment<byte> CurrentImageBuffer
         {
-            get => _currentImageBuffer;
+            get;
             set
             {
-                Debug.WriteLine("OnPixelBufferArrived");
-
                 //this.RaiseAndSetIfChanged(ref _currentImageBuffer, value);
 
                 // when use YUYV by FlashCap.1.10.0
@@ -110,9 +104,10 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
                 // it means `EqualityComparer<TRet>.Default.Equals(backingField, newValue)` always return true
                 // so can not use RaiseAndSetIfChanged
 
+                /*
                 _currentImageBuffer = value;
-                this.RaisePropertyChanged(nameof(CurrentImageBuffer));
-
+                this.RaisePropertyChanged(nameof(CurrentImageBuffer));*/
+                this.RaiseAndSetIfChanged(ref field, value);
                 var ret = value is { Count: > 0 };
                 if (ret != IsPlaying)
                 {
@@ -121,95 +116,86 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
             }
         }
 
-        private ArraySegment<byte> _currentImageBuffer;
+        /// <summary>
+        /// 帧号
+        /// </summary>
+        public long FrameIndex
+        {
+            get;
+            set => this.RaiseAndSetIfChanged(ref field, value);
+        }
 
         /// <summary>
         /// 是否有画面
         /// </summary>
         public bool IsPlaying
         {
-            get => _isPlaying;
-            set => this.RaiseAndSetIfChanged(ref _isPlaying, value);
+            get;
+            set => this.RaiseAndSetIfChanged(ref field, value);
         }
-
-        private bool _isPlaying;
 
         /// <summary>
         /// 当前帧的像素缓冲格式，由当前选中的摄像头流参数决定
         /// </summary>
         public PixelBufferFormat CurrentPixelBufferFormat
         {
-            get => _currentPixelBufferFormat;
-            set => this.RaiseAndSetIfChanged(ref _currentPixelBufferFormat, value);
-        }
-
-        private PixelBufferFormat _currentPixelBufferFormat = PixelBufferFormat.Encoded;
+            get;
+            set => this.RaiseAndSetIfChanged(ref field, value);
+        } = PixelBufferFormat.Encoded;
 
         /// <summary>
         /// 当前帧原始像素图像宽度（仅在非编码格式下有效）
         /// </summary>
         public int CurrentImageWidth
         {
-            get => _currentImageWidth;
-            set => this.RaiseAndSetIfChanged(ref _currentImageWidth, value);
+            get;
+            set => this.RaiseAndSetIfChanged(ref field, value);
         }
-
-        private int _currentImageWidth;
 
         /// <summary>
         /// 当前帧原始像素图像高度（仅在非编码格式下有效）
         /// </summary>
         public int CurrentImageHeight
         {
-            get => _currentImageHeight;
-            set => this.RaiseAndSetIfChanged(ref _currentImageHeight, value);
+            get;
+            set => this.RaiseAndSetIfChanged(ref field, value);
         }
-
-        private int _currentImageHeight;
 
         /// <summary>
         /// 设备清单
         /// </summary>
         public ObservableCollection<CaptureDeviceDescriptor?> DeviceList
         {
-            get => _deviceList;
-            init => this.RaiseAndSetIfChanged(ref _deviceList, value);
-        }
-
-        private readonly ObservableCollection<CaptureDeviceDescriptor?> _deviceList = [];
+            get;
+            init => this.RaiseAndSetIfChanged(ref field, value);
+        } = [];
 
         /// <summary>
         /// 当前/选中的设备
         /// </summary>
         public CaptureDeviceDescriptor? Device
         {
-            get => _device;
-            set => this.RaiseAndSetIfChanged(ref _device, value);
+            get;
+            set => this.RaiseAndSetIfChanged(ref field, value);
         }
-
-        private CaptureDeviceDescriptor? _device;
 
         /// <summary>
         /// 当前/选中的设备的配置
         /// </summary>
         public ObservableCollection<VideoCharacteristicModel> CharacteristicList
         {
-            get => _characteristicList;
-            init => this.RaiseAndSetIfChanged(ref _characteristicList, value);
-        }
-
-        private readonly ObservableCollection<VideoCharacteristicModel> _characteristicList = [];
+            get;
+            init => this.RaiseAndSetIfChanged(ref field, value);
+        } = [];
 
         /// <summary>
         /// 当前/选中的配置
         /// </summary>
         public VideoCharacteristicModel? Characteristic
         {
-            get => _characteristic;
-            set => this.RaiseAndSetIfChanged(ref _characteristic, value);
+            get;
+            set => this.RaiseAndSetIfChanged(ref field, value);
         }
-
-        private VideoCharacteristicModel? _characteristic;
 
         /// <summary>
         /// Devices changed.
@@ -241,7 +227,7 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
                     });
                 }
 
-                CharacteristicList.AddRange(list.OrderByDescending(r => r?.VideoCharacteristic?.FramesPerSecond));
+                CharacteristicList.AddRange(list.OrderByDescending(r => r.VideoCharacteristic?.FramesPerSecond));
 
                 if (_defaultVideoResolution < 0)
                 {
@@ -368,9 +354,8 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
             // ReferImage() 返回当前帧缓冲区的引用（零拷贝），适用于所有格式：
             //   - 编码格式（JPEG/PNG）：返回完整的编码字节流
             //   - 原始像素格式（Bgr24）：返回原始像素字节，由 ImageBufferView 负责直接内存复制
-            // 注意：每次回调返回同一 ArraySegment 对象实例（FlashCap 内部复用缓冲），
-            //       因此 CurrentImageBuffer 的 setter 不能使用 RaiseAndSetIfChanged。
             CurrentImageBuffer = bufferScope.Buffer.ReferImage();
+            FrameIndex = bufferScope.Buffer.FrameIndex;
         }
 
         public async void Start()

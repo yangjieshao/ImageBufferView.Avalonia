@@ -1,5 +1,4 @@
 ﻿using Avalonia;
-using ImageBufferView.Avalonia.Sample;
 using ReactiveUI.Avalonia;
 using System;
 

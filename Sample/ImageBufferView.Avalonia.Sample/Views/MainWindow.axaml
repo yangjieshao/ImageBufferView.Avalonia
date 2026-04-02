@@ -245,7 +245,7 @@
                 PixelBufferFormat="{Binding UsbCamera.CurrentPixelBufferFormat}"
                 RawImageHeight="{Binding UsbCamera.CurrentImageHeight}"
                 RawImageWidth="{Binding UsbCamera.CurrentImageWidth}"
-                Stretch="UniformToFill"
+                Stretch="UniformToFill"  FrameIndex="{Binding UsbCamera.FrameIndex}"
                 StretchDirection="Both">
                 <ibv:ImageBufferView.DefaultBackground>
                     <ImageBrush Source="/Assets/Camera.png" Stretch="UniformToFill" />

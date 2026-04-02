@@ -986,15 +986,15 @@ public partial class ImageBufferView : Control
                         return null;
                     }
 
-                    using (var canvas = new SKCanvas(dstBitmap))
-                    using (var paint = new SKPaint { FilterQuality = SKFilterQuality.Medium, IsAntialias = false })
-                    {
-                        var srcRect = new SKRect(0, 0, srcWidth, srcHeight);
-                        var dstRect = new SKRect(0, 0, dstWidth, dstHeight);
+                    using var canvas = new SKCanvas(dstBitmap);
+                    using var paint = new SKPaint();
+                    paint.FilterQuality = SKFilterQuality.Medium;
+                    paint.IsAntialias = false;
+                    var srcRect = new SKRect(0, 0, srcWidth, srcHeight);
+                    var dstRect = new SKRect(0, 0, dstWidth, dstHeight);
 
-                        // Skia 内部处理色彩空间转换与缩放，可利用 SIMD 优化路径
-                        canvas.DrawBitmap(srcBitmap, srcRect, dstRect, paint);
-                    }
+                    // Skia 内部处理色彩空间转换与缩放，可利用 SIMD 优化路径
+                    canvas.DrawBitmap(srcBitmap, srcRect, dstRect, paint);
                 }
             }
 
