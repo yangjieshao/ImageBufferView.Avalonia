@@ -33,6 +33,9 @@ public partial class ImageBufferView : Control
         ImageBufferProperty.Changed.AddClassHandler<ImageBufferView>(ImageBufferChanged);
         InterpolationModeProperty.Changed.AddClassHandler<ImageBufferView>(InterpolationModeChanged);
         SourceViewProperty.Changed.AddClassHandler<ImageBufferView>(SourceViewChanged);
+        PixelBufferFormatProperty.Changed.AddClassHandler<ImageBufferView>(RawFormatChanged);
+        RawImageWidthProperty.Changed.AddClassHandler<ImageBufferView>(RawFormatChanged);
+        RawImageHeightProperty.Changed.AddClassHandler<ImageBufferView>(RawFormatChanged);
     }
 
     public ImageBufferView() : base()
@@ -163,6 +166,53 @@ public partial class ImageBufferView : Control
         set => SetValue(EnableOptimizationProperty, value);
     }
 
+    /// <summary>
+    /// 原始像素缓冲格式（默认 Auto，即自动解码 JPEG/PNG 等编码格式）
+    /// </summary>
+    public static readonly StyledProperty<PixelBufferFormat> PixelBufferFormatProperty =
+        AvaloniaProperty.Register<ImageBufferView, PixelBufferFormat>(nameof(PixelBufferFormat), PixelBufferFormat.Auto);
+
+    /// <summary>
+    /// 原始像素缓冲格式（默认 Auto，即自动解码 JPEG/PNG 等编码格式）。
+    /// 设置为非 Auto 时，<see cref="ImageBuffer"/> 应传入未编码的原始像素数据，
+    /// 且必须同时配置 <see cref="RawImageWidth"/> 和 <see cref="RawImageHeight"/>。
+    /// </summary>
+    public PixelBufferFormat PixelBufferFormat
+    {
+        get => GetValue(PixelBufferFormatProperty);
+        set => SetValue(PixelBufferFormatProperty, value);
+    }
+
+    /// <summary>
+    /// 原始像素图像宽度（像素数）。当 <see cref="PixelBufferFormat"/> 不为 Auto 时必须设置。
+    /// </summary>
+    public static readonly StyledProperty<int> RawImageWidthProperty =
+        AvaloniaProperty.Register<ImageBufferView, int>(nameof(RawImageWidth), 0);
+
+    /// <summary>
+    /// 原始像素图像宽度（像素数）。当 <see cref="PixelBufferFormat"/> 不为 Auto 时必须设置。
+    /// </summary>
+    public int RawImageWidth
+    {
+        get => GetValue(RawImageWidthProperty);
+        set => SetValue(RawImageWidthProperty, value);
+    }
+
+    /// <summary>
+    /// 原始像素图像高度（像素数）。当 <see cref="PixelBufferFormat"/> 不为 Auto 时必须设置。
+    /// </summary>
+    public static readonly StyledProperty<int> RawImageHeightProperty =
+        AvaloniaProperty.Register<ImageBufferView, int>(nameof(RawImageHeight), 0);
+
+    /// <summary>
+    /// 原始像素图像高度（像素数）。当 <see cref="PixelBufferFormat"/> 不为 Auto 时必须设置。
+    /// </summary>
+    public int RawImageHeight
+    {
+        get => GetValue(RawImageHeightProperty);
+        set => SetValue(RawImageHeightProperty, value);
+    }
+
     private static void InterpolationModeChanged(ImageBufferView sender, AvaloniaPropertyChangedEventArgs e)
     {
         if (e.NewValue is BitmapInterpolationMode mode)
@@ -185,6 +235,9 @@ public partial class ImageBufferView : Control
     private Stretch _cachedStretch;
     private StretchDirection _cachedStretchDirection;
     private bool _cachedEnableOptimization;
+    private PixelBufferFormat _cachedPixelBufferFormat;
+    private int _cachedRawImageWidth;
+    private int _cachedRawImageHeight;
 
     // 缓冲区复用相关字段（双缓冲方式避免竞态条件）
     private WriteableBitmap? _backBuffer;        // 后台缓冲区（用于写入）
@@ -270,6 +323,18 @@ public partial class ImageBufferView : Control
     private static void BitmapChanged(ImageBufferView sender, AvaloniaPropertyChangedEventArgs e)
     {
         sender.SourceSize = e.NewValue is Bitmap bitmap ? bitmap.Size : sender.RenderSize;
+    }
+
+    /// <summary>
+    /// 当 PixelBufferFormat / RawImageWidth / RawImageHeight 变化时，
+    /// 若控件已附加且 ImageBuffer 有内容，则重新触发解码
+    /// </summary>
+    private static void RawFormatChanged(ImageBufferView sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (sender._isAttached && sender.ImageBuffer is { Array: not null, Count: > 0 } buffer)
+        {
+            sender.TryStartDecode(buffer);
+        }
     }
 
     /// <summary>
@@ -578,72 +643,232 @@ public partial class ImageBufferView : Control
     /// </summary>
     private WriteableBitmap? DecodeAndScaleBitmap(byte[] buffer, int length)
     {
-        using var skData = SKData.CreateCopy(new ReadOnlySpan<byte>(buffer, 0, length));
-        using var skBitmap = SKBitmap.Decode(skData);
+        // 根据缓存的格式决定解码路径
+        SKBitmap? skBitmap;
+        SKData? skData = null;
 
-        if (skBitmap is null)
+        if (_cachedPixelBufferFormat != PixelBufferFormat.Auto)
+        {
+            // 原始像素格式（BGRA/RGBA/BGR/RGB/Gray 等），直接从缓冲区构建 SKBitmap
+            skBitmap = CreateSkBitmapFromRaw(buffer, length,
+                _cachedPixelBufferFormat, _cachedRawImageWidth, _cachedRawImageHeight);
+        }
+        else
+        {
+            // 编码格式（JPEG/PNG 等），使用 SkiaSharp 解码
+            skData = SKData.CreateCopy(new ReadOnlySpan<byte>(buffer, 0, length));
+            skBitmap = SKBitmap.Decode(skData);
+        }
+
+        try
+        {
+            if (skBitmap is null)
+            {
+                return null;
+            }
+
+            var sourceWidth = skBitmap.Width;
+            var sourceHeight = skBitmap.Height;
+            var sourceSize = new PixelSize(sourceWidth, sourceHeight);
+            var renderSize = _cachedRenderSize;
+            var stretch = _cachedStretch;
+            var stretchDirection = _cachedStretchDirection;
+            var enableOptimization = _cachedEnableOptimization;
+
+            // 检测源图片分辨率是否发生变化（如切换摄像头）
+            var lastSourceSize = _lastDecodedSourceSize;
+            if (lastSourceSize != default && lastSourceSize != sourceSize)
+            {
+                // 分辨率变化，清理后台缓冲区
+                lock (_backBufferLock)
+                {
+                    if (_backBuffer is not null && _backBufferSize != default)
+                    {
+                        // 将旧缓冲区标记为需要释放
+                        var oldBuffer = _backBuffer;
+                        _backBuffer = null;
+                        _backBufferSize = default;
+                        // 在 UI 线程释放
+                        Dispatcher.UIThread.Post(() => oldBuffer?.Dispose(), DispatcherPriority.Background);
+                    }
+                }
+            }
+            _lastDecodedSourceSize = sourceSize;
+
+            // 判断是否需要预缩放
+            if (!enableOptimization || renderSize.Width <= 0 || renderSize.Height <= 0)
+            {
+                // 不缩放，直接转换为 Avalonia Bitmap
+                return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, enableOptimization);
+            }
+
+            // 计算缩放比例（使用缓存的值，避免跨线程访问）
+            var scale = stretch.CalculateScaling(renderSize, new Size(sourceWidth, sourceHeight), stretchDirection);
+
+            if (scale.X >= 1.0 && scale.Y >= 1.0)
+            {
+                // 图片小于或等于渲染区域，不需要预缩放（放大由 GPU 处理更高效）
+                return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, enableOptimization);
+            }
+
+            // 图片大于渲染区域，预先缩小以减少渲染负担
+            var targetWidth = Math.Max(1, (int)(sourceWidth * scale.X));
+            var targetHeight = Math.Max(1, (int)(sourceHeight * scale.Y));
+
+            // 使用 SkiaSharp 高效缩放
+            using var resizedBitmap = skBitmap.Resize(new SKImageInfo(targetWidth, targetHeight), SKFilterQuality.Medium);
+
+            if (resizedBitmap is null)
+            {
+                return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, enableOptimization);
+            }
+
+            // 对于缩放后的图片，目标尺寸是固定的（基于渲染区域），可以考虑复用
+            return ConvertSkBitmapToAvaloniaWithReuse(resizedBitmap, enableOptimization);
+        }
+        finally
+        {
+            skBitmap?.Dispose();
+            skData?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// 将原始像素缓冲区转换为 SKBitmap。
+    /// 对于有 Alpha 通道的格式（BGRA32/RGBA32/Gray8）直接内存复制；
+    /// 对于无 Alpha 通道的格式（BGR24/RGB24），逐像素转换为 BGRA32。
+    /// </summary>
+    /// <param name="buffer">包含原始像素数据的字节数组</param>
+    /// <param name="length">有效字节数</param>
+    /// <param name="format">原始像素格式</param>
+    /// <param name="imageWidth">图像宽度（像素）</param>
+    /// <param name="imageHeight">图像高度（像素）</param>
+    /// <returns>成功返回 SKBitmap（调用方负责 Dispose），失败返回 null</returns>
+    private static SKBitmap? CreateSkBitmapFromRaw(
+        byte[] buffer, int length,
+        PixelBufferFormat format, int imageWidth, int imageHeight)
+    {
+        if (imageWidth <= 0 || imageHeight <= 0)
         {
             return null;
         }
 
-        var sourceWidth = skBitmap.Width;
-        var sourceHeight = skBitmap.Height;
-        var sourceSize = new PixelSize(sourceWidth, sourceHeight);
-        var renderSize = _cachedRenderSize;
-        var stretch = _cachedStretch;
-        var stretchDirection = _cachedStretchDirection;
-        var enableOptimization = _cachedEnableOptimization;
-
-        // 检测源图片分辨率是否发生变化（如切换摄像头）
-        var lastSourceSize = _lastDecodedSourceSize;
-        if (lastSourceSize != default && lastSourceSize != sourceSize)
+        switch (format)
         {
-            // 分辨率变化，清理后台缓冲区
-            lock (_backBufferLock)
+            case PixelBufferFormat.Bgra32:
             {
-                if (_backBuffer is not null && _backBufferSize != default)
+                var expectedLen = imageWidth * imageHeight * 4;
+                if (length < expectedLen)
                 {
-                    // 将旧缓冲区标记为需要释放
-                    var oldBuffer = _backBuffer;
-                    _backBuffer = null;
-                    _backBufferSize = default;
-                    // 在 UI 线程释放
-                    Dispatcher.UIThread.Post(() => oldBuffer?.Dispose(), DispatcherPriority.Background);
+                    return null;
                 }
+
+                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Bgra8888, SKAlphaType.Premul));
+                unsafe
+                {
+                    fixed (byte* src = buffer)
+                    {
+                        Buffer.MemoryCopy(src, (void*)bitmap.GetPixels(), expectedLen, expectedLen);
+                    }
+                }
+                return bitmap;
             }
+
+            case PixelBufferFormat.Rgba32:
+            {
+                var expectedLen = imageWidth * imageHeight * 4;
+                if (length < expectedLen)
+                {
+                    return null;
+                }
+
+                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Rgba8888, SKAlphaType.Premul));
+                unsafe
+                {
+                    fixed (byte* src = buffer)
+                    {
+                        Buffer.MemoryCopy(src, (void*)bitmap.GetPixels(), expectedLen, expectedLen);
+                    }
+                }
+                return bitmap;
+            }
+
+            case PixelBufferFormat.Bgr24:
+            {
+                var expectedLen = imageWidth * imageHeight * 3;
+                if (length < expectedLen)
+                {
+                    return null;
+                }
+
+                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Bgra8888, SKAlphaType.Opaque));
+                unsafe
+                {
+                    fixed (byte* src = buffer)
+                    {
+                        var dst = (byte*)bitmap.GetPixels();
+                        var totalPixels = imageWidth * imageHeight;
+                        for (var i = 0; i < totalPixels; i++)
+                        {
+                            dst[i * 4]     = src[i * 3];     // B
+                            dst[i * 4 + 1] = src[i * 3 + 1]; // G
+                            dst[i * 4 + 2] = src[i * 3 + 2]; // R
+                            dst[i * 4 + 3] = 255;             // A
+                        }
+                    }
+                }
+                return bitmap;
+            }
+
+            case PixelBufferFormat.Rgb24:
+            {
+                var expectedLen = imageWidth * imageHeight * 3;
+                if (length < expectedLen)
+                {
+                    return null;
+                }
+
+                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Bgra8888, SKAlphaType.Opaque));
+                unsafe
+                {
+                    fixed (byte* src = buffer)
+                    {
+                        var dst = (byte*)bitmap.GetPixels();
+                        var totalPixels = imageWidth * imageHeight;
+                        for (var i = 0; i < totalPixels; i++)
+                        {
+                            dst[i * 4]     = src[i * 3 + 2]; // B（来自 R）
+                            dst[i * 4 + 1] = src[i * 3 + 1]; // G
+                            dst[i * 4 + 2] = src[i * 3];     // R（来自 B）
+                            dst[i * 4 + 3] = 255;             // A
+                        }
+                    }
+                }
+                return bitmap;
+            }
+
+            case PixelBufferFormat.Gray8:
+            {
+                var expectedLen = imageWidth * imageHeight;
+                if (length < expectedLen)
+                {
+                    return null;
+                }
+
+                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Gray8, SKAlphaType.Opaque));
+                unsafe
+                {
+                    fixed (byte* src = buffer)
+                    {
+                        Buffer.MemoryCopy(src, (void*)bitmap.GetPixels(), expectedLen, expectedLen);
+                    }
+                }
+                return bitmap;
+            }
+
+            default:
+                return null;
         }
-        _lastDecodedSourceSize = sourceSize;
-
-        // 判断是否需要预缩放
-        if (!enableOptimization || renderSize.Width <= 0 || renderSize.Height <= 0)
-        {
-            // 不缩放，直接转换为 Avalonia Bitmap
-            return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, enableOptimization);
-        }
-
-        // 计算缩放比例（使用缓存的值，避免跨线程访问）
-        var scale = stretch.CalculateScaling(renderSize, new Size(sourceWidth, sourceHeight), stretchDirection);
-
-        if (scale.X >= 1.0 && scale.Y >= 1.0)
-        {
-            // 图片小于或等于渲染区域，不需要预缩放（放大由 GPU 处理更高效）
-            return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, enableOptimization);
-        }
-
-        // 图片大于渲染区域，预先缩小以减少渲染负担
-        var targetWidth = Math.Max(1, (int)(sourceWidth * scale.X));
-        var targetHeight = Math.Max(1, (int)(sourceHeight * scale.Y));
-
-        // 使用 SkiaSharp 高效缩放
-        using var resizedBitmap = skBitmap.Resize(new SKImageInfo(targetWidth, targetHeight), SKFilterQuality.Medium);
-
-        if (resizedBitmap is null)
-        {
-            return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, enableOptimization);
-        }
-
-        // 对于缩放后的图片，目标尺寸是固定的（基于渲染区域），可以考虑复用
-        return ConvertSkBitmapToAvaloniaWithReuse(resizedBitmap, enableOptimization);
     }
 
     /// <summary>
@@ -745,6 +970,9 @@ public partial class ImageBufferView : Control
         _cachedStretch = Stretch;
         _cachedStretchDirection = StretchDirection;
         _cachedEnableOptimization = EnableOptimization;
+        _cachedPixelBufferFormat = PixelBufferFormat;
+        _cachedRawImageWidth = RawImageWidth;
+        _cachedRawImageHeight = RawImageHeight;
 
         var pooledBuffer = ArrayPool<byte>.Shared.Rent(buffer.Count);
         buffer.AsSpan().CopyTo(pooledBuffer);
@@ -762,4 +990,40 @@ public partial class ImageBufferView : Control
             ThreadPool.UnsafeQueueUserWorkItem(static ctrl => ctrl.DecodeLoop(), this, preferLocal: false);
         }
     }
+}
+
+/// <summary>
+/// 原始像素缓冲格式，用于接收 BGRA/RGBA/BGR/RGB/Gray 等未编码的图像流
+/// </summary>
+public enum PixelBufferFormat
+{
+    /// <summary>
+    /// 自动检测（适用于 JPEG/PNG 等标准编码格式，默认值）
+    /// </summary>
+    Auto,
+
+    /// <summary>
+    /// BGRA 32 位（每像素 4 字节：蓝、绿、红、透明，预乘 Alpha）
+    /// </summary>
+    Bgra32,
+
+    /// <summary>
+    /// RGBA 32 位（每像素 4 字节：红、绿、蓝、透明，预乘 Alpha）
+    /// </summary>
+    Rgba32,
+
+    /// <summary>
+    /// BGR 24 位（每像素 3 字节：蓝、绿、红，无 Alpha）
+    /// </summary>
+    Bgr24,
+
+    /// <summary>
+    /// RGB 24 位（每像素 3 字节：红、绿、蓝，无 Alpha）
+    /// </summary>
+    Rgb24,
+
+    /// <summary>
+    /// 灰度 8 位（每像素 1 字节）
+    /// </summary>
+    Gray8,
 }

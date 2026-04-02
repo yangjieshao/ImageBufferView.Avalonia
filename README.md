@@ -39,7 +39,10 @@ xmlns:ibv="clr-namespace:ImageBufferView.Avalonia;assembly=ImageBufferView.Avalo
 
 | 属性 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `ImageBuffer`        | `ArraySegment<byte>?`     | `null`          | 图片二进制数据（JPEG/PNG 等） |
+| `ImageBuffer`        | `ArraySegment<byte>?`     | `null`          | 图片二进制数据（JPEG/PNG 等编码格式，或原始像素流） |
+| `PixelBufferFormat`  | `PixelBufferFormat`       | `Auto`          | 原始像素格式（Auto 表示自动解码 JPEG/PNG 等） |
+| `RawImageWidth`      | `int`                     | `0`             | 原始像素图像宽度（PixelBufferFormat 非 Auto 时必填） |
+| `RawImageHeight`     | `int`                     | `0`             | 原始像素图像高度（PixelBufferFormat 非 Auto 时必填） |
 | `SourceView`         | `ImageBufferView?`        | `null`          | 复用其他 ImageBufferView 的画面 |
 | `Bitmap`             | `Bitmap?`                 | `null`          | 当前显示的 Bitmap（只读） |
 | `EnableOptimization` | `bool`                    | `true`          | 启用性能优化（预缩放 + 缓冲区复用） |
@@ -119,6 +122,46 @@ public async Task PlayImageSequenceAsync(string[] imagePaths, CancellationToken 
     }
 }
 ```
+
+### 原始像素流（BGRA/BGR/RGB 等）
+
+```xml
+<!-- XAML：指定原始像素格式和图像分辨率 -->
+<ibv:ImageBufferView
+    Width="1280"
+    Height="720"
+    PixelBufferFormat="Bgra32"
+    RawImageWidth="1280"
+    RawImageHeight="720"
+    ImageBuffer="{Binding RawFrameBuffer}"
+    Stretch="UniformToFill" />
+```
+
+```csharp
+// ViewModel：推送原始 BGRA 帧数据
+public ArraySegment<byte>? RawFrameBuffer
+{
+    get => _rawFrameBuffer;
+    set => this.RaiseAndSetIfChanged(ref _rawFrameBuffer, value);
+}
+
+// 从相机/采集卡获取到 BGRA32 原始帧时
+private void OnFrameArrived(byte[] bgraBytes, int width, int height)
+{
+    RawFrameBuffer = new ArraySegment<byte>(bgraBytes);
+}
+```
+
+支持的原始像素格式（`PixelBufferFormat` 枚举）：
+
+| 值        | 说明                              |
+|-----------|-----------------------------------|
+| `Auto`    | 自动解码（JPEG/PNG 等，默认值）    |
+| `Bgra32`  | BGRA 32 位（每像素 4 字节）        |
+| `Rgba32`  | RGBA 32 位（每像素 4 字节）        |
+| `Bgr24`   | BGR 24 位（每像素 3 字节，无 Alpha）|
+| `Rgb24`   | RGB 24 位（每像素 3 字节，无 Alpha）|
+| `Gray8`   | 灰度 8 位（每像素 1 字节）         |
 
 ## 🔧 性能优化说明
 
