@@ -732,7 +732,9 @@ public partial class ImageBufferView : Control
     /// <summary>
     /// 处理原始像素格式（非 Encoded）的解码与缩放路径。
     /// 无需缩放时直接写入 WriteableBitmap，跳过 SKBitmap 中间层；
-    /// 需要缩放时借助 SKBitmap.Resize 完成后再写入 WriteableBitmap。
+    /// 需要缩放时优先使用 <see cref="ScaleRawToSkBitmap"/> 快速路径（通过 Skia InstallPixels 零拷贝包装原始缓冲，
+    /// 再由 Skia 完成缩放，避免全尺寸中间 SKBitmap 分配）；
+    /// 若快速路径不支持该格式（如 BGR24/RGB24），则回退到 <see cref="CreateSkBitmapFromRaw"/> + Resize 原有路径。
     /// </summary>
     /// <param name="buffer">包含原始像素数据的字节数组</param>
     /// <param name="length">有效字节数</param>
@@ -796,25 +798,177 @@ public partial class ImageBufferView : Control
             return WriteRawDirectToWriteableBitmap(buffer, length, format, imageWidth, imageHeight, enableOptimization);
         }
 
-        // 缩放路径：借助 SKBitmap 完成 resize，再写入 WriteableBitmap
-        var skBitmap = CreateSkBitmapFromRaw(buffer, length, format, imageWidth, imageHeight);
-        if (skBitmap is null)
+        // 缩放路径：优先使用 pixmap 快速路径（零拷贝包装原始缓冲，避免全尺寸中间 SKBitmap 分配）
+        var scaledBitmap = ScaleRawToSkBitmap(buffer, length, format, imageWidth, imageHeight, targetWidth, targetHeight);
+
+        if (scaledBitmap is null)
+        {
+            // 快速路径不支持该格式（如 BGR24/RGB24 无对应 Skia 24bpp ColorType），回退到原有路径
+            var srcBitmap = CreateSkBitmapFromRaw(buffer, length, format, imageWidth, imageHeight);
+            if (srcBitmap is null)
+            {
+                return null;
+            }
+
+            using (srcBitmap)
+            {
+                scaledBitmap = srcBitmap.Resize(new SKImageInfo(targetWidth, targetHeight), SKFilterQuality.Medium);
+                if (scaledBitmap is null)
+                {
+                    // Resize 失败时以源尺寸兜底，保证不丢帧
+                    return ConvertSkBitmapToAvaloniaWithReuse(srcBitmap, enableOptimization);
+                }
+            }
+        }
+
+        using (scaledBitmap)
+        {
+            return ConvertSkBitmapToAvaloniaWithReuse(scaledBitmap, enableOptimization);
+        }
+    }
+
+    /// <summary>
+    /// 尝试获取原始像素格式对应的 Skia 图像信息，仅适用于可直接映射到 Skia ColorType 的格式。
+    /// BGR24 / RGB24 等在 SkiaSharp 2.88.x 中无对应的 24bpp ColorType，返回 <see langword="false"/>，
+    /// 调用方应回退到 <see cref="CreateSkBitmapFromRaw"/> 路径。
+    /// </summary>
+    /// <param name="format">原始像素格式</param>
+    /// <param name="width">图像宽度（像素）</param>
+    /// <param name="height">图像高度（像素）</param>
+    /// <param name="info">成功时输出对应的 <see cref="SKImageInfo"/></param>
+    /// <param name="expectedLen">成功时输出期望的最小缓冲字节数</param>
+    /// <returns>格式可直接映射时返回 <see langword="true"/>，否则 <see langword="false"/></returns>
+    private static bool TryGetRawPixmapInfo(
+        PixelBufferFormat format,
+        int width, int height,
+        out SKImageInfo info,
+        out int expectedLen)
+    {
+        info = default;
+        expectedLen = 0;
+
+        switch (format)
+        {
+            case PixelBufferFormat.Bgra32:
+                // 内存布局：B G R A，与 Skia Bgra8888 完全一致
+                // 与 CreateSkBitmapFromRaw 保持一致：约定 Bgra32 数据为预乘格式（调用方责任）
+                expectedLen = checked(width * height * 4);
+                info = new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
+                return true;
+
+            case PixelBufferFormat.Rgba32:
+                // 内存布局：R G B A，与 Skia Rgba8888 完全一致
+                // 与 CreateSkBitmapFromRaw 保持一致：约定 Rgba32 数据为预乘格式（调用方责任）
+                expectedLen = checked(width * height * 4);
+                info = new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul);
+                return true;
+
+            case PixelBufferFormat.Bgr32:
+                // 内存布局：B G R X（X 为填充字节），视作 Bgra8888 Opaque（X 字节被忽略）
+                expectedLen = checked(width * height * 4);
+                info = new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Opaque);
+                return true;
+
+            case PixelBufferFormat.Rgb32:
+                // 内存布局：R G B X，与 Skia Rgb888x 完全一致
+                expectedLen = checked(width * height * 4);
+                info = new SKImageInfo(width, height, SKColorType.Rgb888x, SKAlphaType.Opaque);
+                return true;
+
+            case PixelBufferFormat.Rgb565:
+                // 16bpp RGB565，Skia 原生支持
+                expectedLen = checked(width * height * 2);
+                info = new SKImageInfo(width, height, SKColorType.Rgb565, SKAlphaType.Opaque);
+                return true;
+
+            case PixelBufferFormat.Gray8:
+                // 8bpp 灰度，Skia 原生支持
+                expectedLen = checked(width * height);
+                info = new SKImageInfo(width, height, SKColorType.Gray8, SKAlphaType.Opaque);
+                return true;
+
+            // BGR24 / RGB24：Skia 2.88.x 中不存在 24bpp BGR ColorType，无法直接映射
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// 将原始像素缓冲直接缩放到目标尺寸的 <see cref="SKBitmap"/>（输出格式：Bgra8888 Premul）。
+    /// 通过 SKBitmap.InstallPixels 零拷贝包装原始缓冲区，再借助 Skia 的
+    /// SKCanvas.DrawBitmap 完成缩放，避免分配全尺寸中间 <see cref="SKBitmap"/>。
+    /// <para>
+    /// 仅支持可直接映射到 Skia ColorType 的格式（BGRA32/RGBA32/Bgr32/Rgb32/Rgb565/Gray8）。
+    /// 对 BGR24/RGB24 等格式返回 <see langword="null"/>，调用方应回退到
+    /// <see cref="CreateSkBitmapFromRaw"/> + Resize 路径。
+    /// </para>
+    /// </summary>
+    /// <param name="buffer">包含原始像素数据的字节数组</param>
+    /// <param name="length">有效字节数</param>
+    /// <param name="format">原始像素格式</param>
+    /// <param name="srcWidth">源图像宽度（像素）</param>
+    /// <param name="srcHeight">源图像高度（像素）</param>
+    /// <param name="dstWidth">目标图像宽度（像素）</param>
+    /// <param name="dstHeight">目标图像高度（像素）</param>
+    /// <returns>成功返回目标尺寸的 <see cref="SKBitmap"/>（调用方负责 Dispose），失败返回 <see langword="null"/></returns>
+    private static SKBitmap? ScaleRawToSkBitmap(
+        byte[] buffer, int length,
+        PixelBufferFormat format,
+        int srcWidth, int srcHeight,
+        int dstWidth, int dstHeight)
+    {
+        if (srcWidth <= 0 || srcHeight <= 0 || dstWidth <= 0 || dstHeight <= 0)
         {
             return null;
         }
 
+        if (!TryGetRawPixmapInfo(format, srcWidth, srcHeight, out var srcInfo, out var expectedLen))
+        {
+            // 格式无法直接映射到 Skia ColorType（如 BGR24/RGB24），通知调用方走回退路径
+            return null;
+        }
+
+        if (length < expectedLen)
+        {
+            return null;
+        }
+
+        // 目标统一输出 Bgra8888 Premul，ConvertSkBitmapToAvaloniaWithReuse 可直接使用
+        var dstInfo = new SKImageInfo(dstWidth, dstHeight, SKColorType.Bgra8888, SKAlphaType.Premul);
+        var dstBitmap = new SKBitmap(dstInfo);
+
         try
         {
-            using var resized = skBitmap.Resize(new SKImageInfo(targetWidth, targetHeight), SKFilterQuality.Medium);
-            if (resized is null)
+            unsafe
             {
-                return ConvertSkBitmapToAvaloniaWithReuse(skBitmap, enableOptimization);
+                fixed (byte* p = buffer)
+                {
+                    // InstallPixels 零拷贝包装原始缓冲区，无需额外分配源尺寸 SKBitmap
+                    using var srcBitmap = new SKBitmap();
+                    if (!srcBitmap.InstallPixels(srcInfo, (IntPtr)p, srcInfo.RowBytes))
+                    {
+                        dstBitmap.Dispose();
+                        return null;
+                    }
+
+                    using (var canvas = new SKCanvas(dstBitmap))
+                    using (var paint = new SKPaint { FilterQuality = SKFilterQuality.Medium, IsAntialias = false })
+                    {
+                        var srcRect = new SKRect(0, 0, srcWidth, srcHeight);
+                        var dstRect = new SKRect(0, 0, dstWidth, dstHeight);
+
+                        // Skia 内部处理色彩空间转换与缩放，可利用 SIMD 优化路径
+                        canvas.DrawBitmap(srcBitmap, srcRect, dstRect, paint);
+                    }
+                }
             }
-            return ConvertSkBitmapToAvaloniaWithReuse(resized, enableOptimization);
+
+            return dstBitmap;
         }
-        finally
+        catch
         {
-            skBitmap.Dispose();
+            dstBitmap.Dispose();
+            return null;
         }
     }
 
