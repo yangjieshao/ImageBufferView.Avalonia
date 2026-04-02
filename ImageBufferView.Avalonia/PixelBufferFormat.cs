@@ -32,16 +32,6 @@ public enum PixelBufferFormat
     Rgb32,
 
     /// <summary>
-    /// BGR 24 位（每像素 3 字节：蓝、绿、红，无 Alpha）
-    /// </summary>
-    Bgr24,
-
-    /// <summary>
-    /// RGB 24 位（每像素 3 字节：红、绿、蓝，无 Alpha）
-    /// </summary>
-    Rgb24,
-
-    /// <summary>
     /// RGB 565（每像素 2 字节，打包格式：R[15:11] G[10:5] B[4:0]）
     /// </summary>
     Rgb565,

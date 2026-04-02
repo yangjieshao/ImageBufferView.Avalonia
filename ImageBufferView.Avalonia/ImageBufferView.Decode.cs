@@ -447,16 +447,6 @@ public partial class ImageBufferView
                 srcBytesPerPixel = 4;
                 expectedLen = imageWidth * imageHeight * 4;
                 break;
-            case PixelBufferFormat.Bgr24:
-                pixelFormat = PixelFormats.Bgr24;
-                srcBytesPerPixel = 3;
-                expectedLen = imageWidth * imageHeight * 3;
-                break;
-            case PixelBufferFormat.Rgb24:
-                pixelFormat = PixelFormats.Rgb24;
-                srcBytesPerPixel = 3;
-                expectedLen = imageWidth * imageHeight * 3;
-                break;
             case PixelBufferFormat.Rgb565:
                 pixelFormat = PixelFormats.Rgb565;
                 srcBytesPerPixel = 2;
@@ -590,64 +580,6 @@ public partial class ImageBufferView
                     fixed (byte* src = buffer)
                     {
                         Buffer.MemoryCopy(src, (void*)bitmap.GetPixels(), expectedLen, expectedLen);
-                    }
-                }
-
-                return bitmap;
-            }
-
-            case PixelBufferFormat.Bgr24:
-            {
-                var expectedLen = imageWidth * imageHeight * 3;
-                if (length < expectedLen)
-                {
-                    return null;
-                }
-
-                var bitmap =
-                    new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Bgra8888, SKAlphaType.Opaque));
-                unsafe
-                {
-                    fixed (byte* src = buffer)
-                    {
-                        var dst = (byte*)bitmap.GetPixels();
-                        var totalPixels = imageWidth * imageHeight;
-                        for (var i = 0; i < totalPixels; i++)
-                        {
-                            dst[i * 4] = src[i * 3]; // B
-                            dst[i * 4 + 1] = src[i * 3 + 1]; // G
-                            dst[i * 4 + 2] = src[i * 3 + 2]; // R
-                            dst[i * 4 + 3] = 255; // A
-                        }
-                    }
-                }
-
-                return bitmap;
-            }
-
-            case PixelBufferFormat.Rgb24:
-            {
-                var expectedLen = imageWidth * imageHeight * 3;
-                if (length < expectedLen)
-                {
-                    return null;
-                }
-
-                var bitmap =
-                    new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Bgra8888, SKAlphaType.Opaque));
-                unsafe
-                {
-                    fixed (byte* src = buffer)
-                    {
-                        var dst = (byte*)bitmap.GetPixels();
-                        var totalPixels = imageWidth * imageHeight;
-                        for (var i = 0; i < totalPixels; i++)
-                        {
-                            dst[i * 4] = src[i * 3 + 2]; // B（来自 R）
-                            dst[i * 4 + 1] = src[i * 3 + 1]; // G
-                            dst[i * 4 + 2] = src[i * 3]; // R（来自 B）
-                            dst[i * 4 + 3] = 255; // A
-                        }
                     }
                 }
 

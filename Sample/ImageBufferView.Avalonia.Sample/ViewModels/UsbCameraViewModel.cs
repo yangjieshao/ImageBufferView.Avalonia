@@ -345,9 +345,12 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
                 PixelFormats.JPEG => (PixelBufferFormat.Encoded, TranscodeFormats.DoNotTranscode),
                 PixelFormats.PNG => (PixelBufferFormat.Encoded, TranscodeFormats.DoNotTranscode),
 
-                // WriteableBitmap 原生支持、无需逐像素转换的格式
-                // Windows DIB 的 RGB24 在内存中实际为 BGR 顺序，直接对应 Bgr24
-                PixelFormats.RGB24 => (PixelBufferFormat.Bgr24, TranscodeFormats.DoNotTranscode),
+                // Skia 的 ColorType 原生不支持 RGB24，在最坏情况（源图大于渲染区域）（大概率情况是源图大于渲染区域）的时候会触发逐行复制，
+                // 移除对 RGB24 的原生支持，统一交由 FlashCap 转码为 JPEG 后以编码格式处理，避免热路径上的像素转换循环
+
+                //// WriteableBitmap 原生支持、无需逐像素转换的格式
+                //// Windows DIB 的 RGB24 在内存中实际为 BGR 顺序，直接对应 Bgr24
+                //PixelFormats.RGB24 => (PixelBufferFormat.Bgr24, TranscodeFormats.DoNotTranscode),
 
                 // 其余格式（RGB8/15/16/32/ARGB32/UYVY/YUYV/NV12）需要逐像素转换，
                 // WriteableBitmap 不原生支持，交由 FlashCap 转码为 JPEG 后以编码格式处理

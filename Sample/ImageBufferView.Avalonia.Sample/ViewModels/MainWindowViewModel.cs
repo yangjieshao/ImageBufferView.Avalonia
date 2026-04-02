@@ -79,15 +79,7 @@ public class MainWindowViewModel : ViewModelBase
 
     /// <summary>
     /// </summary>
-    private readonly List<ArraySegment<byte>> _bgr24Buffers = [];
-
-    /// <summary>
-    /// </summary>
     private readonly List<ArraySegment<byte>> _bgra32Buffers = [];
-
-    /// <summary>
-    /// </summary>
-    private readonly List<ArraySegment<byte>> _rgb24Buffers = [];
 
     /// <summary>
     /// </summary>
@@ -164,33 +156,6 @@ public class MainWindowViewModel : ViewModelBase
     }
 
 
-    private void RunBgr24Buffer(CancellationToken token)
-    {
-        if (_bgr24Buffers.Count == 0)
-        {
-            return;
-        }
-
-        Task.Run(async () =>
-        {
-            while (!token.IsCancellationRequested)
-            {
-                foreach (var buffer in _bgr24Buffers.TakeWhile(_ => !token.IsCancellationRequested))
-                {
-                    ImageBuffer = buffer;
-                    try
-                    {
-                        await Task.Delay(1, token);
-                    }
-                    catch (Exception)
-                    {
-                        // ignored
-                    }
-                }
-            }
-        }, token);
-    }
-
     private void RunBgra32Buffer(CancellationToken token)
     {
         if (_bgra32Buffers.Count == 0)
@@ -203,33 +168,6 @@ public class MainWindowViewModel : ViewModelBase
             while (!token.IsCancellationRequested)
             {
                 foreach (var buffer in _bgra32Buffers.TakeWhile(_ => !token.IsCancellationRequested))
-                {
-                    ImageBuffer = buffer;
-                    try
-                    {
-                        await Task.Delay(1, token);
-                    }
-                    catch (Exception)
-                    {
-                        // ignored
-                    }
-                }
-            }
-        }, token);
-    }
-
-    private void RunRgb24Buffer(CancellationToken token)
-    {
-        if (_rgb24Buffers.Count == 0)
-        {
-            return;
-        }
-
-        Task.Run(async () =>
-        {
-            while (!token.IsCancellationRequested)
-            {
-                foreach (var buffer in _rgb24Buffers.TakeWhile(_ => !token.IsCancellationRequested))
                 {
                     ImageBuffer = buffer;
                     try
@@ -299,38 +237,6 @@ public class MainWindowViewModel : ViewModelBase
         }, token);
     }
 
-    private async Task LoadBgr24Buffer(CancellationToken token)
-    {
-        if (_bgr24Buffers.Count == 0)
-        {
-            if (!Directory.Exists("Raw"))
-            {
-                return;
-            }
-
-            var files = new DirectoryInfo("Raw").GetFiles("bgr24*.raw");
-
-            // Ready buffers
-            foreach (var file in files)
-            {
-                if (token.IsCancellationRequested)
-                {
-                    break;
-                }
-
-                try
-                {
-                    var buffer = await File.ReadAllBytesAsync(file.FullName, token);
-                    _bgr24Buffers.Add(buffer);
-                }
-                catch (Exception)
-                {
-                    // ignored
-                }
-            }
-        }
-    }
-
     private async Task LoadBgra32Buffer(CancellationToken token)
     {
         if (_bgra32Buffers.Count == 0)
@@ -354,38 +260,6 @@ public class MainWindowViewModel : ViewModelBase
                 {
                     var buffer = await File.ReadAllBytesAsync(file.FullName, token);
                     _bgra32Buffers.Add(buffer);
-                }
-                catch (Exception)
-                {
-                    // ignored
-                }
-            }
-        }
-    }
-
-    private async Task LoadRgb24Buffer(CancellationToken token)
-    {
-        if (_rgb24Buffers.Count == 0)
-        {
-            if (!Directory.Exists("Raw"))
-            {
-                return;
-            }
-
-            var files = new DirectoryInfo("Raw").GetFiles("rgb24*.raw");
-
-            // Ready buffers
-            foreach (var file in files)
-            {
-                if (token.IsCancellationRequested)
-                {
-                    break;
-                }
-
-                try
-                {
-                    var buffer = await File.ReadAllBytesAsync(file.FullName, token);
-                    _rgb24Buffers.Add(buffer);
                 }
                 catch (Exception)
                 {
