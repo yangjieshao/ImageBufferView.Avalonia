@@ -378,7 +378,7 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
             }
             else
             {
-                CurrentImageBuffer = bufferScope.Buffer.ReferImage();
+                CurrentImageBuffer = newImageBuffer;
             }
         }
 
