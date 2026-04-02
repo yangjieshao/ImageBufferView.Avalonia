@@ -857,6 +857,14 @@ public partial class ImageBufferView : Control
                 pixelFormat = PixelFormat.Bgra8888;
                 expectedLen = imageWidth * imageHeight;
                 break;
+            case PixelBufferFormat.Yuyv422:
+                if (imageWidth % 2 != 0)
+                {
+                    return null;
+                }
+                pixelFormat = PixelFormat.Bgra8888;
+                expectedLen = imageWidth * imageHeight * 2;
+                break;
             default:
                 return null;
         }
@@ -973,6 +981,48 @@ public partial class ImageBufferView : Control
                                     dstRow[col * 4 + 1] = gray; // G
                                     dstRow[col * 4 + 2] = gray; // R
                                     dstRow[col * 4 + 3] = 255;  // A
+                                }
+                            }
+                            break;
+                        }
+
+                        case PixelBufferFormat.Yuyv422:
+                        {
+                            // YUYV 4:2:2 → BGRA8888（BT.601 整数定点运算）
+                            // 每 4 字节表示 2 个像素：[Y0, U, Y1, V]
+                            for (var row = 0; row < imageHeight; row++)
+                            {
+                                var srcRow = src + row * imageWidth * 2;
+                                var dstRow = dst + row * dstRowBytes;
+                                for (var col = 0; col < imageWidth; col += 2)
+                                {
+                                    var y0 = srcRow[col * 2];
+                                    var u  = srcRow[col * 2 + 1];
+                                    var y1 = srcRow[col * 2 + 2];
+                                    var v  = srcRow[col * 2 + 3];
+
+                                    var c0 = y0 - 16;
+                                    var c1 = y1 - 16;
+                                    var d  = u  - 128;
+                                    var e  = v  - 128;
+
+                                    // 像素 0
+                                    var r0 = (298 * c0           + 409 * e + 128) >> 8;
+                                    var g0 = (298 * c0 - 100 * d - 208 * e + 128) >> 8;
+                                    var b0 = (298 * c0 + 516 * d           + 128) >> 8;
+                                    dstRow[col * 4]     = (byte)(b0 < 0 ? 0 : b0 > 255 ? 255 : b0);
+                                    dstRow[col * 4 + 1] = (byte)(g0 < 0 ? 0 : g0 > 255 ? 255 : g0);
+                                    dstRow[col * 4 + 2] = (byte)(r0 < 0 ? 0 : r0 > 255 ? 255 : r0);
+                                    dstRow[col * 4 + 3] = 255;
+
+                                    // 像素 1
+                                    var r1 = (298 * c1           + 409 * e + 128) >> 8;
+                                    var g1 = (298 * c1 - 100 * d - 208 * e + 128) >> 8;
+                                    var b1 = (298 * c1 + 516 * d           + 128) >> 8;
+                                    dstRow[(col + 1) * 4]     = (byte)(b1 < 0 ? 0 : b1 > 255 ? 255 : b1);
+                                    dstRow[(col + 1) * 4 + 1] = (byte)(g1 < 0 ? 0 : g1 > 255 ? 255 : g1);
+                                    dstRow[(col + 1) * 4 + 2] = (byte)(r1 < 0 ? 0 : r1 > 255 ? 255 : r1);
+                                    dstRow[(col + 1) * 4 + 3] = 255;
                                 }
                             }
                             break;
@@ -1123,6 +1173,62 @@ public partial class ImageBufferView : Control
                 return bitmap;
             }
 
+            case PixelBufferFormat.Yuyv422:
+            {
+                if (imageWidth % 2 != 0)
+                {
+                    return null;
+                }
+
+                var expectedLen = imageWidth * imageHeight * 2;
+                if (length < expectedLen)
+                {
+                    return null;
+                }
+
+                // YUYV 4:2:2 → BGRA8888（BT.601 整数定点运算）
+                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Bgra8888, SKAlphaType.Opaque));
+                unsafe
+                {
+                    fixed (byte* src = buffer)
+                    {
+                        var dst = (byte*)bitmap.GetPixels();
+                        var totalPairs = imageWidth * imageHeight / 2;
+                        for (var i = 0; i < totalPairs; i++)
+                        {
+                            var y0 = src[i * 4];
+                            var u  = src[i * 4 + 1];
+                            var y1 = src[i * 4 + 2];
+                            var v  = src[i * 4 + 3];
+
+                            var c0 = y0 - 16;
+                            var c1 = y1 - 16;
+                            var d  = u  - 128;
+                            var e  = v  - 128;
+
+                            // 像素 0
+                            var r0 = (298 * c0           + 409 * e + 128) >> 8;
+                            var g0 = (298 * c0 - 100 * d - 208 * e + 128) >> 8;
+                            var b0 = (298 * c0 + 516 * d           + 128) >> 8;
+                            dst[i * 8]     = (byte)(b0 < 0 ? 0 : b0 > 255 ? 255 : b0); // B
+                            dst[i * 8 + 1] = (byte)(g0 < 0 ? 0 : g0 > 255 ? 255 : g0); // G
+                            dst[i * 8 + 2] = (byte)(r0 < 0 ? 0 : r0 > 255 ? 255 : r0); // R
+                            dst[i * 8 + 3] = 255;                                        // A
+
+                            // 像素 1
+                            var r1 = (298 * c1           + 409 * e + 128) >> 8;
+                            var g1 = (298 * c1 - 100 * d - 208 * e + 128) >> 8;
+                            var b1 = (298 * c1 + 516 * d           + 128) >> 8;
+                            dst[i * 8 + 4] = (byte)(b1 < 0 ? 0 : b1 > 255 ? 255 : b1); // B
+                            dst[i * 8 + 5] = (byte)(g1 < 0 ? 0 : g1 > 255 ? 255 : g1); // G
+                            dst[i * 8 + 6] = (byte)(r1 < 0 ? 0 : r1 > 255 ? 255 : r1); // R
+                            dst[i * 8 + 7] = 255;                                        // A
+                        }
+                    }
+                }
+                return bitmap;
+            }
+
             default:
                 return null;
         }
@@ -1250,7 +1356,7 @@ public partial class ImageBufferView : Control
 }
 
 /// <summary>
-/// 原始像素缓冲格式，用于接收 BGRA/RGBA/BGR/RGB/Gray 等未编码的图像流
+/// 原始像素缓冲格式，用于接收 BGRA/RGBA/BGR/RGB/Gray/YUYV 等未编码的图像流
 /// </summary>
 public enum PixelBufferFormat
 {
@@ -1283,4 +1389,10 @@ public enum PixelBufferFormat
     /// 灰度 8 位（每像素 1 字节）
     /// </summary>
     Gray8,
+
+    /// <summary>
+    /// YUYV 4:2:2 打包格式（每两像素 4 字节：Y0、U、Y1、V，即 YUY2）。
+    /// 缓冲区大小 = 宽 × 高 × 2 字节。
+    /// </summary>
+    Yuyv422,
 }
