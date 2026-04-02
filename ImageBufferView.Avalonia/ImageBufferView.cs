@@ -594,7 +594,7 @@ public partial class ImageBufferView : Control
         lock (_backBufferLock)
         {
             var size = bitmap.PixelSize;
-            var format = bitmap.Format ?? PixelFormat.Bgra8888;
+            var format = bitmap.Format ?? PixelFormats.Bgra8888;
 
             // 如果后台缓冲区为空或尺寸不匹配，替换它
             if (_backBuffer is null || _backBufferSize != size || _backBufferFormat != format)
@@ -835,26 +835,36 @@ public partial class ImageBufferView : Control
         bool enableReuse)
     {
         // 计算原始缓冲区的期望字节数与目标 PixelFormat
+        // 直接使用与源格式对应的 PixelFormats，避免格式转换
         PixelFormat pixelFormat;
         int expectedLen;
+        int srcBytesPerPixel;
 
         switch (format)
         {
             case PixelBufferFormat.Bgra32:
-                pixelFormat = PixelFormat.Bgra8888;
+                pixelFormat = PixelFormats.Bgra8888;
+                srcBytesPerPixel = 4;
                 expectedLen = imageWidth * imageHeight * 4;
                 break;
             case PixelBufferFormat.Rgba32:
-                pixelFormat = PixelFormat.Rgba8888;
+                pixelFormat = PixelFormats.Rgba8888;
+                srcBytesPerPixel = 4;
                 expectedLen = imageWidth * imageHeight * 4;
                 break;
             case PixelBufferFormat.Bgr24:
+                pixelFormat = PixelFormats.Bgr24;
+                srcBytesPerPixel = 3;
+                expectedLen = imageWidth * imageHeight * 3;
+                break;
             case PixelBufferFormat.Rgb24:
-                pixelFormat = PixelFormat.Bgra8888;
+                pixelFormat = PixelFormats.Rgb24;
+                srcBytesPerPixel = 3;
                 expectedLen = imageWidth * imageHeight * 3;
                 break;
             case PixelBufferFormat.Gray8:
-                pixelFormat = PixelFormat.Bgra8888;
+                pixelFormat = PixelFormats.Gray8;
+                srcBytesPerPixel = 1;
                 expectedLen = imageWidth * imageHeight;
                 break;
             default:
@@ -884,12 +894,18 @@ public partial class ImageBufferView : Control
             }
         }
 
-        bitmap ??= new WriteableBitmap(currentSize, new Vector(96, 96), pixelFormat, AlphaFormat.Premul);
+        // 含 Alpha 通道的格式（Bgra32/Rgba32）使用预乘 Alpha，不含 Alpha 的格式使用不透明
+        var alphaFormat = format is PixelBufferFormat.Bgra32 or PixelBufferFormat.Rgba32
+            ? AlphaFormat.Premul
+            : AlphaFormat.Opaque;
+
+        bitmap ??= new WriteableBitmap(currentSize, new Vector(96, 96), pixelFormat, alphaFormat);
 
         try
         {
             using var fb = bitmap.Lock();
             var dstRowBytes = fb.RowBytes;
+            var srcRowBytes = imageWidth * srcBytesPerPixel;
 
             unsafe
             {
@@ -897,85 +913,22 @@ public partial class ImageBufferView : Control
                 {
                     var dst = (byte*)fb.Address;
 
-                    switch (format)
+                    // 所有格式均使用 PixelFormats 对应原生格式，无需逐像素转换，直接内存复制
+                    if (dstRowBytes == srcRowBytes)
                     {
-                        case PixelBufferFormat.Bgra32:
-                        case PixelBufferFormat.Rgba32:
+                        // 源/目标行字节完全对齐，单次 MemoryCopy 最优
+                        Buffer.MemoryCopy(src, dst, (long)dstRowBytes * imageHeight, (long)srcRowBytes * imageHeight);
+                    }
+                    else
+                    {
+                        // 逐行复制以兼容目标行对齐填充（stride padding）
+                        for (var row = 0; row < imageHeight; row++)
                         {
-                            // 源行字节与目标行字节相同时，单次 MemoryCopy 最优
-                            var srcRowBytes = imageWidth * 4;
-                            if (dstRowBytes == srcRowBytes)
-                            {
-                                Buffer.MemoryCopy(src, dst, dstRowBytes * imageHeight, srcRowBytes * imageHeight);
-                            }
-                            else
-                            {
-                                // 逐行复制以兼容目标行对齐填充
-                                for (var row = 0; row < imageHeight; row++)
-                                {
-                                    Buffer.MemoryCopy(
-                                        src + row * srcRowBytes,
-                                        dst + row * dstRowBytes,
-                                        dstRowBytes,
-                                        srcRowBytes);
-                                }
-                            }
-                            break;
-                        }
-
-                        case PixelBufferFormat.Bgr24:
-                        {
-                            // BGR24 → BGRA8888：逐像素扩展，填充 Alpha=255
-                            for (var row = 0; row < imageHeight; row++)
-                            {
-                                var srcRow = src + row * imageWidth * 3;
-                                var dstRow = dst + row * dstRowBytes;
-                                for (var col = 0; col < imageWidth; col++)
-                                {
-                                    dstRow[col * 4]     = srcRow[col * 3];     // B
-                                    dstRow[col * 4 + 1] = srcRow[col * 3 + 1]; // G
-                                    dstRow[col * 4 + 2] = srcRow[col * 3 + 2]; // R
-                                    dstRow[col * 4 + 3] = 255;                 // A
-                                }
-                            }
-                            break;
-                        }
-
-                        case PixelBufferFormat.Rgb24:
-                        {
-                            // RGB24 → BGRA8888：逐像素交换 R/B，填充 Alpha=255
-                            for (var row = 0; row < imageHeight; row++)
-                            {
-                                var srcRow = src + row * imageWidth * 3;
-                                var dstRow = dst + row * dstRowBytes;
-                                for (var col = 0; col < imageWidth; col++)
-                                {
-                                    dstRow[col * 4]     = srcRow[col * 3 + 2]; // B（源 RGB24 的 R 通道）
-                                    dstRow[col * 4 + 1] = srcRow[col * 3 + 1]; // G
-                                    dstRow[col * 4 + 2] = srcRow[col * 3];     // R（源 RGB24 的 B 通道）
-                                    dstRow[col * 4 + 3] = 255;                 // A
-                                }
-                            }
-                            break;
-                        }
-
-                        case PixelBufferFormat.Gray8:
-                        {
-                            // Gray8 → BGRA8888：灰度值展开到三通道，填充 Alpha=255
-                            for (var row = 0; row < imageHeight; row++)
-                            {
-                                var srcRow = src + row * imageWidth;
-                                var dstRow = dst + row * dstRowBytes;
-                                for (var col = 0; col < imageWidth; col++)
-                                {
-                                    var gray = srcRow[col];
-                                    dstRow[col * 4]     = gray; // B
-                                    dstRow[col * 4 + 1] = gray; // G
-                                    dstRow[col * 4 + 2] = gray; // R
-                                    dstRow[col * 4 + 3] = 255;  // A
-                                }
-                            }
-                            break;
+                            Buffer.MemoryCopy(
+                                src + row * srcRowBytes,
+                                dst + row * dstRowBytes,
+                                dstRowBytes,
+                                srcRowBytes);
                         }
                     }
                 }
@@ -1140,9 +1093,9 @@ public partial class ImageBufferView : Control
         var info = skBitmap.Info;
         var pixelFormat = info.ColorType switch
         {
-            SKColorType.Rgba8888 => PixelFormat.Rgba8888,
-            SKColorType.Bgra8888 => PixelFormat.Bgra8888,
-            _ => PixelFormat.Bgra8888
+            SKColorType.Rgba8888 => PixelFormats.Rgba8888,
+            SKColorType.Bgra8888 => PixelFormats.Bgra8888,
+            _ => PixelFormats.Bgra8888
         };
 
         // 如果颜色类型不匹配，需要转换
@@ -1155,7 +1108,7 @@ public partial class ImageBufferView : Control
             using var canvas = new SKCanvas(convertedBitmap);
             canvas.DrawBitmap(skBitmap, 0, 0);
             bitmapToUse = convertedBitmap;
-            pixelFormat = PixelFormat.Bgra8888;
+            pixelFormat = PixelFormats.Bgra8888;
         }
 
         try
