@@ -835,9 +835,9 @@ public partial class ImageBufferView : Control
         bool enableReuse)
     {
         // 计算原始缓冲区的期望字节数与目标 PixelFormat
-        // 直接使用与源格式对应的 PixelFormats，避免格式转换
         PixelFormat pixelFormat;
         int expectedLen;
+        // 仅对直接 MemoryCopy 的格式有意义；需要逐像素转换的格式设为 0
         int srcBytesPerPixel;
 
         switch (format)
@@ -867,6 +867,37 @@ public partial class ImageBufferView : Control
                 srcBytesPerPixel = 1;
                 expectedLen = imageWidth * imageHeight;
                 break;
+            // 以下格式均需像素级转换，目标统一为 Bgra8888
+            case PixelBufferFormat.Rgb8:
+                pixelFormat = PixelFormats.Bgra8888;
+                srcBytesPerPixel = 0;
+                expectedLen = imageWidth * imageHeight;
+                break;
+            case PixelBufferFormat.Rgb15:
+            case PixelBufferFormat.Rgb16:
+                pixelFormat = PixelFormats.Bgra8888;
+                srcBytesPerPixel = 0;
+                expectedLen = imageWidth * imageHeight * 2;
+                break;
+            case PixelBufferFormat.Bgr32:
+            case PixelBufferFormat.Argb32:
+                pixelFormat = PixelFormats.Bgra8888;
+                srcBytesPerPixel = 0;
+                expectedLen = imageWidth * imageHeight * 4;
+                break;
+            case PixelBufferFormat.Uyvy:
+            case PixelBufferFormat.Yuyv:
+                pixelFormat = PixelFormats.Bgra8888;
+                srcBytesPerPixel = 0;
+                // 每 2 像素 4 字节（YUV 4:2:2 打包）
+                expectedLen = imageWidth * imageHeight * 2;
+                break;
+            case PixelBufferFormat.Nv12:
+                pixelFormat = PixelFormats.Bgra8888;
+                srcBytesPerPixel = 0;
+                // Y 平面 W*H + UV 平面 W*H/2，共 1.5 字节/像素（要求宽高均为偶数）
+                expectedLen = imageWidth * imageHeight * 3 / 2;
+                break;
             default:
                 return null;
         }
@@ -894,8 +925,8 @@ public partial class ImageBufferView : Control
             }
         }
 
-        // 含 Alpha 通道的格式（Bgra32/Rgba32）使用预乘 Alpha，不含 Alpha 的格式使用不透明
-        var alphaFormat = format is PixelBufferFormat.Bgra32 or PixelBufferFormat.Rgba32
+        // 含预乘 Alpha 的格式使用 Premul，其余均不透明
+        var alphaFormat = format is PixelBufferFormat.Bgra32 or PixelBufferFormat.Rgba32 or PixelBufferFormat.Argb32
             ? AlphaFormat.Premul
             : AlphaFormat.Opaque;
 
@@ -905,7 +936,6 @@ public partial class ImageBufferView : Control
         {
             using var fb = bitmap.Lock();
             var dstRowBytes = fb.RowBytes;
-            var srcRowBytes = imageWidth * srcBytesPerPixel;
 
             unsafe
             {
@@ -913,23 +943,32 @@ public partial class ImageBufferView : Control
                 {
                     var dst = (byte*)fb.Address;
 
-                    // 所有格式均使用 PixelFormats 对应原生格式，无需逐像素转换，直接内存复制
-                    if (dstRowBytes == srcRowBytes)
+                    if (srcBytesPerPixel > 0)
                     {
-                        // 源/目标行字节完全对齐，单次 MemoryCopy 最优
-                        Buffer.MemoryCopy(src, dst, (long)dstRowBytes * imageHeight, (long)srcRowBytes * imageHeight);
+                        // 源/目标格式一致，直接内存复制（无需逐像素转换）
+                        var srcRowBytes = imageWidth * srcBytesPerPixel;
+                        if (dstRowBytes == srcRowBytes)
+                        {
+                            // 源/目标行字节完全对齐，单次 MemoryCopy 最优
+                            Buffer.MemoryCopy(src, dst, (long)dstRowBytes * imageHeight, (long)srcRowBytes * imageHeight);
+                        }
+                        else
+                        {
+                            // 逐行复制以兼容目标行对齐填充（stride padding）
+                            for (var row = 0; row < imageHeight; row++)
+                            {
+                                Buffer.MemoryCopy(
+                                    src + row * srcRowBytes,
+                                    dst + row * dstRowBytes,
+                                    dstRowBytes,
+                                    srcRowBytes);
+                            }
+                        }
                     }
                     else
                     {
-                        // 逐行复制以兼容目标行对齐填充（stride padding）
-                        for (var row = 0; row < imageHeight; row++)
-                        {
-                            Buffer.MemoryCopy(
-                                src + row * srcRowBytes,
-                                dst + row * dstRowBytes,
-                                dstRowBytes,
-                                srcRowBytes);
-                        }
+                        // 需要像素级转换，输出到 Bgra8888
+                        WriteConvertedPixels(src, dst, dstRowBytes, format, imageWidth, imageHeight);
                     }
                 }
             }
@@ -944,9 +983,237 @@ public partial class ImageBufferView : Control
     }
 
     /// <summary>
+    /// 将需要像素级转换的原始格式（Rgb8/Rgb15/Rgb16/Bgr32/Argb32/UYVY/YUYV/NV12）
+    /// 逐像素转换并写入 Bgra8888 目标缓冲区。
+    /// </summary>
+    /// <param name="src">源像素数据指针</param>
+    /// <param name="dst">目标 Bgra8888 数据指针</param>
+    /// <param name="dstRowBytes">目标每行字节数（含 stride 对齐填充）</param>
+    /// <param name="format">源像素格式</param>
+    /// <param name="imageWidth">图像宽度（像素）</param>
+    /// <param name="imageHeight">图像高度（像素）</param>
+    private static unsafe void WriteConvertedPixels(
+        byte* src, byte* dst, int dstRowBytes,
+        PixelBufferFormat format, int imageWidth, int imageHeight)
+    {
+        switch (format)
+        {
+            case PixelBufferFormat.Rgb8:
+            {
+                // RGB332：高3位=R，中3位=G，低2位=B → Bgra8888
+                var srcRowBytes = imageWidth;
+                for (var row = 0; row < imageHeight; row++)
+                {
+                    var srcRow = src + row * srcRowBytes;
+                    var dstRow = dst + row * dstRowBytes;
+                    for (var col = 0; col < imageWidth; col++)
+                    {
+                        var px = srcRow[col];
+                        var r3 = (px >> 5) & 0x07;
+                        var g3 = (px >> 2) & 0x07;
+                        var b2 = px & 0x03;
+                        // 扩展到 8 位（replicate 高位填充低位）
+                        dstRow[col * 4 + 0] = (byte)((b2 << 6) | (b2 << 4) | (b2 << 2) | b2); // B: 2位→8位（位复制填充）
+                        dstRow[col * 4 + 1] = (byte)((g3 << 5) | (g3 << 2) | (g3 >> 1)); // G: 3位→8位
+                        dstRow[col * 4 + 2] = (byte)((r3 << 5) | (r3 << 2) | (r3 >> 1)); // R: 3位→8位
+                        dstRow[col * 4 + 3] = 255;
+                    }
+                }
+                break;
+            }
+
+            case PixelBufferFormat.Rgb15:
+            {
+                // XRGB555（小端序）：位14-10=R，位9-5=G，位4-0=B → Bgra8888
+                var srcRowBytes = imageWidth * 2;
+                for (var row = 0; row < imageHeight; row++)
+                {
+                    var srcRow = src + row * srcRowBytes;
+                    var dstRow = dst + row * dstRowBytes;
+                    for (var col = 0; col < imageWidth; col++)
+                    {
+                        var px = (ushort)(srcRow[col * 2] | (srcRow[col * 2 + 1] << 8));
+                        var b5 = px & 0x1F;
+                        var g5 = (px >> 5) & 0x1F;
+                        var r5 = (px >> 10) & 0x1F;
+                        // 5位→8位：高位复制填充低位
+                        dstRow[col * 4 + 0] = (byte)((b5 << 3) | (b5 >> 2));
+                        dstRow[col * 4 + 1] = (byte)((g5 << 3) | (g5 >> 2));
+                        dstRow[col * 4 + 2] = (byte)((r5 << 3) | (r5 >> 2));
+                        dstRow[col * 4 + 3] = 255;
+                    }
+                }
+                break;
+            }
+
+            case PixelBufferFormat.Rgb16:
+            {
+                // RGB565（小端序）：位15-11=R，位10-5=G，位4-0=B → Bgra8888
+                var srcRowBytes = imageWidth * 2;
+                for (var row = 0; row < imageHeight; row++)
+                {
+                    var srcRow = src + row * srcRowBytes;
+                    var dstRow = dst + row * dstRowBytes;
+                    for (var col = 0; col < imageWidth; col++)
+                    {
+                        var px = (ushort)(srcRow[col * 2] | (srcRow[col * 2 + 1] << 8));
+                        var b5 = px & 0x1F;
+                        var g6 = (px >> 5) & 0x3F;
+                        var r5 = (px >> 11) & 0x1F;
+                        dstRow[col * 4 + 0] = (byte)((b5 << 3) | (b5 >> 2));       // B: 5位→8位
+                        dstRow[col * 4 + 1] = (byte)((g6 << 2) | (g6 >> 4));        // G: 6位→8位
+                        dstRow[col * 4 + 2] = (byte)((r5 << 3) | (r5 >> 2));        // R: 5位→8位
+                        dstRow[col * 4 + 3] = 255;
+                    }
+                }
+                break;
+            }
+
+            case PixelBufferFormat.Bgr32:
+            {
+                // BGRX：4字节/像素，忽略第4字节（填充），Alpha 固定为 255
+                var srcRowBytes = imageWidth * 4;
+                for (var row = 0; row < imageHeight; row++)
+                {
+                    var srcRow = src + row * srcRowBytes;
+                    var dstRow = dst + row * dstRowBytes;
+                    for (var col = 0; col < imageWidth; col++)
+                    {
+                        dstRow[col * 4 + 0] = srcRow[col * 4 + 0]; // B
+                        dstRow[col * 4 + 1] = srcRow[col * 4 + 1]; // G
+                        dstRow[col * 4 + 2] = srcRow[col * 4 + 2]; // R
+                        dstRow[col * 4 + 3] = 255;                  // A（填充字节忽略）
+                    }
+                }
+                break;
+            }
+
+            case PixelBufferFormat.Argb32:
+            {
+                // ARGB：字节顺序 A R G B → Bgra8888 字节顺序 B G R A
+                var srcRowBytes = imageWidth * 4;
+                for (var row = 0; row < imageHeight; row++)
+                {
+                    var srcRow = src + row * srcRowBytes;
+                    var dstRow = dst + row * dstRowBytes;
+                    for (var col = 0; col < imageWidth; col++)
+                    {
+                        dstRow[col * 4 + 0] = srcRow[col * 4 + 3]; // B（源索引3）
+                        dstRow[col * 4 + 1] = srcRow[col * 4 + 2]; // G（源索引2）
+                        dstRow[col * 4 + 2] = srcRow[col * 4 + 1]; // R（源索引1）
+                        dstRow[col * 4 + 3] = srcRow[col * 4 + 0]; // A（源索引0）
+                    }
+                }
+                break;
+            }
+
+            case PixelBufferFormat.Yuyv:
+            {
+                // YUYV（YUY2）：每 2 像素 4 字节，顺序 Y0 U0 Y1 V0
+                // 使用 BT.601 全范围 YUV → BGR 整数近似
+                var srcRowBytes = imageWidth * 2;
+                for (var row = 0; row < imageHeight; row++)
+                {
+                    var srcRow = src + row * srcRowBytes;
+                    var dstRow = dst + row * dstRowBytes;
+                    var pairs = imageWidth / 2;
+                    for (var pair = 0; pair < pairs; pair++)
+                    {
+                        var y0 = srcRow[pair * 4 + 0];
+                        var u  = srcRow[pair * 4 + 1] - 128;
+                        var y1 = srcRow[pair * 4 + 2];
+                        var v  = srcRow[pair * 4 + 3] - 128;
+
+                        YuvToBgra(y0, u, v,
+                            out dstRow[pair * 8 + 0], out dstRow[pair * 8 + 1],
+                            out dstRow[pair * 8 + 2], out dstRow[pair * 8 + 3]);
+                        YuvToBgra(y1, u, v,
+                            out dstRow[pair * 8 + 4], out dstRow[pair * 8 + 5],
+                            out dstRow[pair * 8 + 6], out dstRow[pair * 8 + 7]);
+                    }
+                }
+                break;
+            }
+
+            case PixelBufferFormat.Uyvy:
+            {
+                // UYVY：每 2 像素 4 字节，顺序 U0 Y0 V0 Y1
+                var srcRowBytes = imageWidth * 2;
+                for (var row = 0; row < imageHeight; row++)
+                {
+                    var srcRow = src + row * srcRowBytes;
+                    var dstRow = dst + row * dstRowBytes;
+                    var pairs = imageWidth / 2;
+                    for (var pair = 0; pair < pairs; pair++)
+                    {
+                        var u  = srcRow[pair * 4 + 0] - 128;
+                        var y0 = srcRow[pair * 4 + 1];
+                        var v  = srcRow[pair * 4 + 2] - 128;
+                        var y1 = srcRow[pair * 4 + 3];
+
+                        YuvToBgra(y0, u, v,
+                            out dstRow[pair * 8 + 0], out dstRow[pair * 8 + 1],
+                            out dstRow[pair * 8 + 2], out dstRow[pair * 8 + 3]);
+                        YuvToBgra(y1, u, v,
+                            out dstRow[pair * 8 + 4], out dstRow[pair * 8 + 5],
+                            out dstRow[pair * 8 + 6], out dstRow[pair * 8 + 7]);
+                    }
+                }
+                break;
+            }
+
+            case PixelBufferFormat.Nv12:
+            {
+                // NV12：Y 平面（W*H 字节）+ 交错 UV 平面（W*H/2 字节）
+                var yPlane  = src;
+                var uvPlane = src + imageWidth * imageHeight;
+                for (var row = 0; row < imageHeight; row++)
+                {
+                    var yRow  = yPlane  + row * imageWidth;
+                    var uvRow = uvPlane + (row / 2) * imageWidth; // UV 行对应 Y 行的一半
+                    var dstRow = dst + row * dstRowBytes;
+                    for (var col = 0; col < imageWidth; col++)
+                    {
+                        var y = yRow[col];
+                        var u = uvRow[(col & ~1)]     - 128; // 偶数列对齐取 U
+                        var v = uvRow[(col & ~1) + 1] - 128; // 紧随其后取 V
+                        YuvToBgra(y, u, v,
+                            out dstRow[col * 4 + 0], out dstRow[col * 4 + 1],
+                            out dstRow[col * 4 + 2], out dstRow[col * 4 + 3]);
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// BT.601 全范围 YUV → BGRA 整数近似转换（内联辅助方法）。
+    /// </summary>
+    /// <param name="y">亮度分量（0-255）</param>
+    /// <param name="u">U 色度分量（已减去 128，范围 -128~127）</param>
+    /// <param name="v">V 色度分量（已减去 128，范围 -128~127）</param>
+    /// <param name="b">输出 B 分量</param>
+    /// <param name="g">输出 G 分量</param>
+    /// <param name="r">输出 R 分量</param>
+    /// <param name="a">输出 A 分量（恒为 255）</param>
+    private static void YuvToBgra(int y, int u, int v,
+        out byte b, out byte g, out byte r, out byte a)
+    {
+        // 使用 BT.601 全范围整数近似（移位精度 >>8）：
+        //   R = clamp(Y + 1.402*V)  ≈ clamp(Y + (359*V >> 8))
+        //   G = clamp(Y - 0.344*U - 0.714*V) ≈ clamp(Y - (88*U + 183*V) >> 8)
+        //   B = clamp(Y + 1.772*U)  ≈ clamp(Y + (454*U >> 8))
+        r = (byte)Math.Clamp(y + (359 * v >> 8), 0, 255);
+        g = (byte)Math.Clamp(y - ((88 * u + 183 * v) >> 8), 0, 255);
+        b = (byte)Math.Clamp(y + (454 * u >> 8), 0, 255);
+        a = 255;
+    }
+
+    /// <summary>
     /// 将原始像素缓冲区转换为 SKBitmap。
     /// 对于有 Alpha 通道的格式（BGRA32/RGBA32/Gray8）直接内存复制；
-    /// 对于无 Alpha 通道的格式（BGR24/RGB24），逐像素转换为 BGRA32。
+    /// 对于其他格式（BGR24/RGB24/RGB8/RGB15/RGB16/BGR32/ARGB32/UYVY/YUYV/NV12），均转换为 BGRA8888。
     /// </summary>
     /// <param name="buffer">包含原始像素数据的字节数组</param>
     /// <param name="length">有效字节数</param>
@@ -1071,6 +1338,224 @@ public partial class ImageBufferView : Control
                     fixed (byte* src = buffer)
                     {
                         Buffer.MemoryCopy(src, (void*)bitmap.GetPixels(), expectedLen, expectedLen);
+                    }
+                }
+                return bitmap;
+            }
+
+            case PixelBufferFormat.Rgb8:
+            {
+                // RGB332：每像素 1 字节 → Bgra8888
+                var expectedLen = imageWidth * imageHeight;
+                if (length < expectedLen)
+                {
+                    return null;
+                }
+
+                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Bgra8888, SKAlphaType.Opaque));
+                unsafe
+                {
+                    fixed (byte* src = buffer)
+                    {
+                        var dst = (byte*)bitmap.GetPixels();
+                        var total = imageWidth * imageHeight;
+                        for (var i = 0; i < total; i++)
+                        {
+                            var px = src[i];
+                            var r3 = (px >> 5) & 0x07;
+                            var g3 = (px >> 2) & 0x07;
+                            var b2 = px & 0x03;
+                            dst[i * 4 + 0] = (byte)((b2 << 6) | (b2 << 4) | (b2 << 2) | b2); // B: 2位→8位（位复制填充）
+                            dst[i * 4 + 1] = (byte)((g3 << 5) | (g3 << 2) | (g3 >> 1));        // G: 3位→8位
+                            dst[i * 4 + 2] = (byte)((r3 << 5) | (r3 << 2) | (r3 >> 1));        // R: 3位→8位
+                            dst[i * 4 + 3] = 255;
+                        }
+                    }
+                }
+                return bitmap;
+            }
+
+            case PixelBufferFormat.Rgb15:
+            {
+                // XRGB555（小端序）：每像素 2 字节 → Bgra8888
+                var expectedLen = imageWidth * imageHeight * 2;
+                if (length < expectedLen)
+                {
+                    return null;
+                }
+
+                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Bgra8888, SKAlphaType.Opaque));
+                unsafe
+                {
+                    fixed (byte* src = buffer)
+                    {
+                        var dst = (byte*)bitmap.GetPixels();
+                        var total = imageWidth * imageHeight;
+                        for (var i = 0; i < total; i++)
+                        {
+                            var px = (ushort)(src[i * 2] | (src[i * 2 + 1] << 8));
+                            var b5 = px & 0x1F;
+                            var g5 = (px >> 5) & 0x1F;
+                            var r5 = (px >> 10) & 0x1F;
+                            dst[i * 4 + 0] = (byte)((b5 << 3) | (b5 >> 2)); // B: 5位→8位
+                            dst[i * 4 + 1] = (byte)((g5 << 3) | (g5 >> 2)); // G: 5位→8位
+                            dst[i * 4 + 2] = (byte)((r5 << 3) | (r5 >> 2)); // R: 5位→8位
+                            dst[i * 4 + 3] = 255;
+                        }
+                    }
+                }
+                return bitmap;
+            }
+
+            case PixelBufferFormat.Rgb16:
+            {
+                // RGB565（小端序）：每像素 2 字节 → Bgra8888
+                var expectedLen = imageWidth * imageHeight * 2;
+                if (length < expectedLen)
+                {
+                    return null;
+                }
+
+                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Bgra8888, SKAlphaType.Opaque));
+                unsafe
+                {
+                    fixed (byte* src = buffer)
+                    {
+                        var dst = (byte*)bitmap.GetPixels();
+                        var total = imageWidth * imageHeight;
+                        for (var i = 0; i < total; i++)
+                        {
+                            var px = (ushort)(src[i * 2] | (src[i * 2 + 1] << 8));
+                            var b5 = px & 0x1F;
+                            var g6 = (px >> 5) & 0x3F;
+                            var r5 = (px >> 11) & 0x1F;
+                            dst[i * 4 + 0] = (byte)((b5 << 3) | (b5 >> 2)); // B: 5位→8位
+                            dst[i * 4 + 1] = (byte)((g6 << 2) | (g6 >> 4)); // G: 6位→8位
+                            dst[i * 4 + 2] = (byte)((r5 << 3) | (r5 >> 2)); // R: 5位→8位
+                            dst[i * 4 + 3] = 255;
+                        }
+                    }
+                }
+                return bitmap;
+            }
+
+            case PixelBufferFormat.Bgr32:
+            {
+                // BGRX：每像素 4 字节，第 4 字节为填充 → Bgra8888（Alpha 固定 255）
+                var expectedLen = imageWidth * imageHeight * 4;
+                if (length < expectedLen)
+                {
+                    return null;
+                }
+
+                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Bgra8888, SKAlphaType.Opaque));
+                unsafe
+                {
+                    fixed (byte* src = buffer)
+                    {
+                        var dst = (byte*)bitmap.GetPixels();
+                        var total = imageWidth * imageHeight;
+                        for (var i = 0; i < total; i++)
+                        {
+                            dst[i * 4 + 0] = src[i * 4 + 0]; // B
+                            dst[i * 4 + 1] = src[i * 4 + 1]; // G
+                            dst[i * 4 + 2] = src[i * 4 + 2]; // R
+                            dst[i * 4 + 3] = 255;             // A
+                        }
+                    }
+                }
+                return bitmap;
+            }
+
+            case PixelBufferFormat.Argb32:
+            {
+                // ARGB：字节顺序 A R G B → Bgra8888 字节顺序 B G R A
+                var expectedLen = imageWidth * imageHeight * 4;
+                if (length < expectedLen)
+                {
+                    return null;
+                }
+
+                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Bgra8888, SKAlphaType.Premul));
+                unsafe
+                {
+                    fixed (byte* src = buffer)
+                    {
+                        var dst = (byte*)bitmap.GetPixels();
+                        var total = imageWidth * imageHeight;
+                        for (var i = 0; i < total; i++)
+                        {
+                            dst[i * 4 + 0] = src[i * 4 + 3]; // B（源索引3）
+                            dst[i * 4 + 1] = src[i * 4 + 2]; // G（源索引2）
+                            dst[i * 4 + 2] = src[i * 4 + 1]; // R（源索引1）
+                            dst[i * 4 + 3] = src[i * 4 + 0]; // A（源索引0）
+                        }
+                    }
+                }
+                return bitmap;
+            }
+
+            case PixelBufferFormat.Yuyv:
+            {
+                // YUYV（YUY2）：每 2 像素 4 字节，顺序 Y0 U0 Y1 V0 → Bgra8888
+                var expectedLen = imageWidth * imageHeight * 2;
+                if (length < expectedLen)
+                {
+                    return null;
+                }
+
+                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Bgra8888, SKAlphaType.Opaque));
+                unsafe
+                {
+                    fixed (byte* src = buffer)
+                    {
+                        var dst = (byte*)bitmap.GetPixels();
+                        var dstRowBytes = bitmap.RowBytes;
+                        WriteConvertedPixels(src, dst, dstRowBytes, PixelBufferFormat.Yuyv, imageWidth, imageHeight);
+                    }
+                }
+                return bitmap;
+            }
+
+            case PixelBufferFormat.Uyvy:
+            {
+                // UYVY：每 2 像素 4 字节，顺序 U0 Y0 V0 Y1 → Bgra8888
+                var expectedLen = imageWidth * imageHeight * 2;
+                if (length < expectedLen)
+                {
+                    return null;
+                }
+
+                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Bgra8888, SKAlphaType.Opaque));
+                unsafe
+                {
+                    fixed (byte* src = buffer)
+                    {
+                        var dst = (byte*)bitmap.GetPixels();
+                        var dstRowBytes = bitmap.RowBytes;
+                        WriteConvertedPixels(src, dst, dstRowBytes, PixelBufferFormat.Uyvy, imageWidth, imageHeight);
+                    }
+                }
+                return bitmap;
+            }
+
+            case PixelBufferFormat.Nv12:
+            {
+                // NV12：Y 平面 W*H 字节 + 交错 UV 平面 W*H/2 字节 → Bgra8888
+                var expectedLen = imageWidth * imageHeight * 3 / 2;
+                if (length < expectedLen)
+                {
+                    return null;
+                }
+
+                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Bgra8888, SKAlphaType.Opaque));
+                unsafe
+                {
+                    fixed (byte* src = buffer)
+                    {
+                        var dst = (byte*)bitmap.GetPixels();
+                        var dstRowBytes = bitmap.RowBytes;
+                        WriteConvertedPixels(src, dst, dstRowBytes, PixelBufferFormat.Nv12, imageWidth, imageHeight);
                     }
                 }
                 return bitmap;
@@ -1203,7 +1688,7 @@ public partial class ImageBufferView : Control
 }
 
 /// <summary>
-/// 原始像素缓冲格式，用于接收 BGRA/RGBA/BGR/RGB/Gray 等未编码的图像流
+/// 原始像素缓冲格式，用于接收 BGRA/RGBA/BGR/RGB/YUV/Gray 等未编码的图像流
 /// </summary>
 public enum PixelBufferFormat
 {
@@ -1236,4 +1721,52 @@ public enum PixelBufferFormat
     /// 灰度 8 位（每像素 1 字节）
     /// </summary>
     Gray8,
+
+    /// <summary>
+    /// RGB332 8 位打包格式（每像素 1 字节：高3位红、中3位绿、低2位蓝）。
+    /// 对应 FlashCap PixelFormats.RGB8。
+    /// </summary>
+    Rgb8,
+
+    /// <summary>
+    /// RGB555 15 位打包格式（每像素 2 字节，小端序：最高位填充、5位红、5位绿、5位蓝）。
+    /// 对应 FlashCap PixelFormats.RGB15。
+    /// </summary>
+    Rgb15,
+
+    /// <summary>
+    /// RGB565 16 位打包格式（每像素 2 字节，小端序：5位红、6位绿、5位蓝）。
+    /// 对应 FlashCap PixelFormats.RGB16。
+    /// </summary>
+    Rgb16,
+
+    /// <summary>
+    /// BGR 32 位（每像素 4 字节：蓝、绿、红、填充，无 Alpha）。
+    /// 对应 FlashCap PixelFormats.RGB32（Windows DIB 中实际内存顺序为 BGR+填充）。
+    /// </summary>
+    Bgr32,
+
+    /// <summary>
+    /// ARGB 32 位（每像素 4 字节：透明、红、绿、蓝）。
+    /// 对应 FlashCap PixelFormats.ARGB32。
+    /// </summary>
+    Argb32,
+
+    /// <summary>
+    /// UYVY YUV 4:2:2 打包格式（每 2 像素 4 字节，顺序：U0 Y0 V0 Y1）。
+    /// 对应 FlashCap PixelFormats.UYVY。
+    /// </summary>
+    Uyvy,
+
+    /// <summary>
+    /// YUYV YUV 4:2:2 打包格式（每 2 像素 4 字节，顺序：Y0 U0 Y1 V0），亦称 YUY2。
+    /// 对应 FlashCap PixelFormats.YUYV。
+    /// </summary>
+    Yuyv,
+
+    /// <summary>
+    /// NV12 YUV 4:2:0 半平面格式（先 W×H 字节亮度 Y 平面，再 W×H/2 字节交错 UV 平面，共 1.5 字节/像素）。
+    /// 对应 FlashCap PixelFormats.NV12。
+    /// </summary>
+    Nv12,
 }

@@ -242,6 +242,9 @@
                 Margin="5"
                 ImageBuffer="{Binding UsbCamera.CurrentImageBuffer}"
                 InterpolationMode="HighQuality"
+                PixelBufferFormat="{Binding UsbCamera.CurrentPixelBufferFormat}"
+                RawImageHeight="{Binding UsbCamera.CurrentImageHeight}"
+                RawImageWidth="{Binding UsbCamera.CurrentImageWidth}"
                 Stretch="UniformToFill"
                 StretchDirection="Both">
                 <ibv:ImageBufferView.DefaultBackground>
