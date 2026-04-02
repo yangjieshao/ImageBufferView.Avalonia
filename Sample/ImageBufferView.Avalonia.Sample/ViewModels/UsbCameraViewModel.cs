@@ -79,7 +79,9 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
                     }
 
                     this.WhenAnyValue(x => x.Device).Do(OnDeviceListChanged).Subscribe();
-                    this.WhenAnyValue(x => x.Characteristic).Do(OnCharacteristicsChangedAsync).Subscribe();
+                    //this.WhenAnyValue(x => x.Characteristic).Do(OnCharacteristicsChangedAsync).Subscribe();
+                    this.WhenAnyValue(x => x.Characteristic)
+                        .Do(model => _ =OnCharacteristicsChangedAsync(model)).Subscribe();
                 });
             });
         }
@@ -249,7 +251,7 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
         /// Characteristics changed.
         /// </summary>
         /// <param name="characteristicsModel"> </param>
-        private async void OnCharacteristicsChangedAsync(VideoCharacteristicModel? characteristicsModel)
+        private async Task OnCharacteristicsChangedAsync(VideoCharacteristicModel? characteristicsModel)
         {
             if (Design.IsDesignMode)
             {
@@ -358,7 +360,7 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
             FrameIndex = bufferScope.Buffer.FrameIndex;
         }
 
-        public async void Start()
+        public async Task Start()
         {
             _needStart = true;
             if (_captureDevice == null)
@@ -368,7 +370,7 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
             await _captureDevice.StartAsync();
         }
 
-        public async void Stop()
+        public async Task Stop()
         {
             _needStart = false;
             if (_captureDevice == null)
