@@ -876,16 +876,6 @@ public partial class ImageBufferView : Control
                 srcBytesPerPixel = 2;
                 expectedLen = imageWidth * imageHeight * 2;
                 break;
-            case PixelBufferFormat.Bgr565:
-                pixelFormat = PixelFormats.Bgr565;
-                srcBytesPerPixel = 2;
-                expectedLen = imageWidth * imageHeight * 2;
-                break;
-            case PixelBufferFormat.Bgr555:
-                pixelFormat = PixelFormats.Bgr555;
-                srcBytesPerPixel = 2;
-                expectedLen = imageWidth * imageHeight * 2;
-                break;
             case PixelBufferFormat.Gray8:
                 pixelFormat = PixelFormats.Gray8;
                 srcBytesPerPixel = 1;
@@ -1130,68 +1120,6 @@ public partial class ImageBufferView : Control
                 return bitmap;
             }
 
-            case PixelBufferFormat.Bgr565:
-            {
-                // 内存布局：B[15:11] G[10:5] R[4:0]，逐像素重新打包为 Rgb565（R[15:11] G[10:5] B[4:0]）
-                var expectedLen = imageWidth * imageHeight * 2;
-                if (length < expectedLen)
-                {
-                    return null;
-                }
-
-                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Rgb565, SKAlphaType.Opaque));
-                unsafe
-                {
-                    fixed (byte* src = buffer)
-                    {
-                        var dst = (ushort*)bitmap.GetPixels();
-                        var srcPtr = (ushort*)src;
-                        var totalPixels = imageWidth * imageHeight;
-                        for (var i = 0; i < totalPixels; i++)
-                        {
-                            var px = srcPtr[i];
-                            // BGR565 → RGB565：交换 R[4:0] 和 B[15:11]
-                            dst[i] = (ushort)(((px & 0x001F) << 11) | (px & 0x07E0) | ((px & 0xF800) >> 11));
-                        }
-                    }
-                }
-                return bitmap;
-            }
-
-            case PixelBufferFormat.Bgr555:
-            {
-                // 内存布局：X[15] B[14:10] G[9:5] R[4:0]，展开为 Bgra8888
-                var expectedLen = imageWidth * imageHeight * 2;
-                if (length < expectedLen)
-                {
-                    return null;
-                }
-
-                var bitmap = new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Bgra8888, SKAlphaType.Opaque));
-                unsafe
-                {
-                    fixed (byte* src = buffer)
-                    {
-                        var dstPtr = (byte*)bitmap.GetPixels();
-                        var srcPtr = (ushort*)src;
-                        var totalPixels = imageWidth * imageHeight;
-                        for (var i = 0; i < totalPixels; i++)
-                        {
-                            var px = srcPtr[i];
-                            // 每个分量从 5 位扩展到 8 位（左移 3 位，低 3 位补高 3 位以平滑量化）
-                            var r5 = (px) & 0x1F;
-                            var g5 = (px >> 5) & 0x1F;
-                            var b5 = (px >> 10) & 0x1F;
-                            dstPtr[i * 4]     = (byte)((b5 << 3) | (b5 >> 2)); // B
-                            dstPtr[i * 4 + 1] = (byte)((g5 << 3) | (g5 >> 2)); // G
-                            dstPtr[i * 4 + 2] = (byte)((r5 << 3) | (r5 >> 2)); // R
-                            dstPtr[i * 4 + 3] = 255;                            // A
-                        }
-                    }
-                }
-                return bitmap;
-            }
-
             case PixelBufferFormat.Gray8:
             {
                 var expectedLen = imageWidth * imageHeight;
@@ -1382,16 +1310,6 @@ public enum PixelBufferFormat
     /// RGB 565（每像素 2 字节，打包格式：R[15:11] G[10:5] B[4:0]）
     /// </summary>
     Rgb565,
-
-    /// <summary>
-    /// BGR 565（每像素 2 字节，打包格式：B[15:11] G[10:5] R[4:0]）
-    /// </summary>
-    Bgr565,
-
-    /// <summary>
-    /// BGR 555（每像素 2 字节，打包格式：X[15] B[14:10] G[9:5] R[4:0]）
-    /// </summary>
-    Bgr555,
 
     /// <summary>
     /// 灰度 8 位（每像素 1 字节）
