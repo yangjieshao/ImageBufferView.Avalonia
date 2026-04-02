@@ -324,7 +324,7 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
         }
 
         /// <summary>
-        /// 将 FlashCap <see cref="PixelFormats"/> 映射为
+        /// 将 FlashCap <see cref="FlashCap.PixelFormats"/> 映射为
         /// <see cref="PixelBufferFormat"/> 与对应的 <see cref="TranscodeFormats"/>。
         /// <para>
         /// 只有 Avalonia WriteableBitmap 原生支持直接内存复制（无需逐像素转换）的格式才使用
@@ -367,8 +367,8 @@ namespace ImageBufferView.Avalonia.Sample.ViewModels
         {
             // ReferImage() 返回当前帧缓冲区的引用（零拷贝），适用于所有格式：
             //   - 编码格式（JPEG/PNG）：返回完整的编码字节流
-            //   - 原始像素格式（RGB/YUV 等）：返回原始像素字节，由 ImageBufferView 负责解析
-            // 注意：YUYV 等格式下每次回调返回同一 ArraySegment 对象实例（FlashCap 内部复用缓冲），
+            //   - 原始像素格式（Bgr24）：返回原始像素字节，由 ImageBufferView 负责直接内存复制
+            // 注意：每次回调返回同一 ArraySegment 对象实例（FlashCap 内部复用缓冲），
             //       因此 CurrentImageBuffer 的 setter 不能使用 RaiseAndSetIfChanged。
             CurrentImageBuffer = bufferScope.Buffer.ReferImage();
         }
