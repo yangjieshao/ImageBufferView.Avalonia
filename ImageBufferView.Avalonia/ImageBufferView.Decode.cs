@@ -15,6 +15,12 @@ namespace ImageBufferView.Avalonia;
 /// </summary>
 public partial class ImageBufferView
 {
+    // Reference wrapper for PixelSize to allow atomic Volatile read/write of the reference
+    private sealed class PixelSizeBox
+    {
+        public PixelSize Value;
+        public PixelSizeBox(PixelSize value) => Value = value;
+    }
     /// <summary>
     /// 将旧的 WriteableBitmap 回收到后台缓冲区（用于下次复用）
     /// </summary>
@@ -60,7 +66,7 @@ public partial class ImageBufferView
             bitmapToDispose = _backBuffer;
             _backBuffer = null;
             _backBufferSize = default;
-            _lastDecodedSourceSize = default;
+            Volatile.Write(ref _lastDecodedSourceSizeBox, null);
         }
 
         bitmapToDispose?.Dispose();
@@ -100,7 +106,7 @@ public partial class ImageBufferView
             var enableOptimization = _cachedEnableOptimization;
 
             // 检测源图片分辨率是否发生变化（如切换摄像头）
-            var lastSourceSize = _lastDecodedSourceSize;
+            var lastSourceSize = Volatile.Read(ref _lastDecodedSourceSizeBox)?.Value ?? default;
             if (lastSourceSize != default && lastSourceSize != sourceSize)
             {
                 // 分辨率变化，清理后台缓冲区
@@ -118,7 +124,16 @@ public partial class ImageBufferView
                 }
             }
 
-            _lastDecodedSourceSize = sourceSize;
+            var box = Volatile.Read(ref _lastDecodedSourceSizeBox);
+            if (box is null)
+            {
+                box = new PixelSizeBox(sourceSize);
+                Volatile.Write(ref _lastDecodedSourceSizeBox, box);
+            }
+            else
+            {
+                box.Value = sourceSize;
+            }
 
             // 判断是否需要预缩放
             if (!enableOptimization || renderSize.Width <= 0 || renderSize.Height <= 0)
@@ -186,7 +201,7 @@ public partial class ImageBufferView
         var enableOptimization = _cachedEnableOptimization;
 
         // 检测源图片分辨率是否发生变化（如切换摄像头）
-        var lastSourceSize = _lastDecodedSourceSize;
+        var lastSourceSize = Volatile.Read(ref _lastDecodedSourceSizeBox)?.Value ?? default;
         if (lastSourceSize != default && lastSourceSize != sourceSize)
         {
             lock (_backBufferLock)
@@ -201,7 +216,16 @@ public partial class ImageBufferView
             }
         }
 
-        _lastDecodedSourceSize = sourceSize;
+        var box = Volatile.Read(ref _lastDecodedSourceSizeBox);
+        if (box is null)
+        {
+            box = new PixelSizeBox(sourceSize);
+            Volatile.Write(ref _lastDecodedSourceSizeBox, box);
+        }
+        else
+        {
+            box.Value = sourceSize;
+        }
 
         // 判断是否需要预缩放
         var needsScale = enableOptimization && renderSize is { Width: > 0, Height: > 0 };

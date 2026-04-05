@@ -265,7 +265,7 @@ public partial class ImageBufferView : Control
     private PixelSize _backBufferSize;
     private PixelFormat _backBufferFormat;
     private readonly Lock _backBufferLock = new();
-    private PixelSize _lastDecodedSourceSize; // 上一次解码的源图片尺寸（用于检测分辨率变化）
+    private PixelSizeBox? _lastDecodedSourceSizeBox; // 上一次解码的源图片尺寸（用于检测分辨率变化）
 
     // SourceView 订阅相关
     private IDisposable? _sourceViewSubscription;
