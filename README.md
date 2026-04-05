@@ -52,6 +52,7 @@ xmlns:ibv="clr-namespace:ImageBufferView.Avalonia;assembly=ImageBufferView.Avalo
 | `StretchDirection`   | `StretchDirection`        | `Both`          | 拉伸方向限制   |
 | `InterpolationMode`  | `BitmapInterpolationMode` | `MediumQuality` | 插值质量       |
 | `DefaultBackground`  | `IBrush?`                 | `null`          | 无图片时的背景 |
+| `MaxDecodeConcurrency` | `int`                    | `Environment.ProcessorCount` | 全局最大并发解码数（可在应用启动时调整，影响所有控件实例） |
 
 ## 💡 示例
 
@@ -230,11 +231,25 @@ public partial class CameraViewModel : ObservableObject
 2. **缓冲区复用** - 复用 WriteableBitmap 对象，减少内存分配和 GC 压力
 3. **智能检测**   - 自动检测分辨率变化，在需要时重置缓冲区
 
-### 性能提升参考
+### 并发解码配置
 
-| 场景 | 性能提升 |
-|------|----------|
-| 1080p → 720p 显示 | ~40-50% |
-| 固定分辨率流       | ~20-30% |
-| 动态分辨率流       | ~10-20% |
+`ImageBufferView` 使用内部信号量来限制并发解码任务的数量，默认值为 `Environment.ProcessorCount`（以充分利用多核）。
+
+- 全局调整：可以在应用初始化时通过设置静态属性来更改默认并发上限，例如：
+
+```csharp
+// 将全局最大并发解码数设置为 4
+ImageBufferView.MaxDecodeConcurrency = 4;
+```
+
+设置会线程安全地替换内部信号量并立即生效，影响应用内所有 `ImageBufferView` 实例。
+
+注意：设置为过高的并发数可能导致 CPU 饱和或内存占用增加；在低功耗设备上推荐减小该值以降低资源使用。
+
+建议设置时机：
+
+- 在应用初始化阶段（例如在 App 启动或主窗口创建之前）设置最为安全，能确保新值在控件首次创建前生效；
+- 如果需要在运行时调整，尽量在低活动时段或在不处理关键帧时更改，虽然替换过程是线程安全的，但在高并发解码时频繁切换可能导致短暂的资源波动；
+- 对于移动/嵌入式设备，建议在检测到电源或性能模式变化时（例如切换到省电模式）调整为较小的值；
+- 在服务器/批处理场景，可根据可用 CPU 与内存资源适当增大，但务必通过性能测试确认不会导致系统过载。
 

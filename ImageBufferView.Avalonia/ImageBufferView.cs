@@ -17,10 +17,44 @@ namespace ImageBufferView.Avalonia;
 public partial class ImageBufferView : Control
 {
     /// <summary>
-    /// 并发解码数 = CPU 核心数（充分利用多核）
+    /// 并发解码信号量（默认基于 CPU 核心数，可通过静态/实例属性调整）
     /// </summary>
-    private static readonly SemaphoreSlim SDecodeSemaphore =
+    private static SemaphoreSlim SDecodeSemaphore =
         new(Environment.ProcessorCount, Environment.ProcessorCount);
+
+    // 用于记录当前最大并发数的静态字段
+    private static int s_maxDecodeConcurrency = Environment.ProcessorCount;
+    private static readonly object SDecodeSemaphoreLock = new();
+
+    /// <summary>
+    /// 全局默认的最大并发解码数。设置此值会重新创建用于解码的信号量（线程安全）。
+    /// </summary>
+    public static int MaxDecodeConcurrency
+    {
+        get => Volatile.Read(ref s_maxDecodeConcurrency);
+        set
+        {
+            if (value <= 0) throw new ArgumentOutOfRangeException(nameof(value));
+            lock (SDecodeSemaphoreLock)
+            {
+                var old = Volatile.Read(ref s_maxDecodeConcurrency);
+                if (old == value) return;
+
+                var newSem = new SemaphoreSlim(value, value);
+                var prev = Interlocked.Exchange(ref SDecodeSemaphore, newSem);
+                Volatile.Write(ref s_maxDecodeConcurrency, value);
+
+                try
+                {
+                    prev?.Dispose();
+                }
+                catch
+                {
+                    // 忽略 Dispose 过程中的异常，保证健壮性
+                }
+            }
+        }
+    }
 
     static ImageBufferView()
     {
