@@ -24,13 +24,13 @@
     <Grid ColumnDefinitions="*,310">
         <Grid
             Background="GreenYellow"
-            ColumnDefinitions="100,*,*,*"
+            ColumnDefinitions="auto,*,*,*"
             RowDefinitions="50,*,*,*,*">
 
             <Grid
                 Grid.Row="0"
                 Grid.Column="0"
-                ColumnDefinitions="*,*">
+                ColumnDefinitions="auto,auto,auto,auto,auto">
 
                 <Button
                     Grid.Column="0"
@@ -64,6 +64,25 @@
                     Content=" Clean"
                     Cursor="Hand"
                     IsVisible="{Binding ImageBuffer, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+                <Button
+                    Grid.Column="2"
+                    Height="30"
+                    Padding="5,5"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Center"
+                    Command="{Binding SwitchFormat}"
+                    Content="Switch"
+                    Cursor="Hand"
+                    IsVisible="{Binding CancellationTokenSource, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+                <TextBlock
+                    Grid.Column="3"
+                    Margin="5,0"
+                    VerticalAlignment="Center"
+                    Text="{Binding CurrentFormatName}" />
+
+               
             </Grid>
 
             <TextBlock

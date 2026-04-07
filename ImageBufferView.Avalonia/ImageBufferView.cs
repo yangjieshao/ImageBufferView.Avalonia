@@ -442,117 +442,111 @@ public partial class ImageBufferView : Control
     }
 
     /// <summary>
-    /// 解码循环：从最新缓冲读取、限制并发、解码并在 UI 线程发布 Bitmap 更新
+    /// 解码循环：从最新缓冲读取、限制并发、解码并在 UI 线程发布 Bitmap 更新。
+    /// 使用 try/finally 确保所有退出路径（含取消、异常）都重置 _decoding 标志，
+    /// 并检查 lost-wakeup 以防止新数据被遗漏。
     /// </summary>
     private void DecodeLoop()
     {
         var token = GetOrCreateSessionToken();
 
-        while (_isAttached && !token.IsCancellationRequested)
+        try
         {
-            var buffer = Interlocked.Exchange(ref _latestBuffer, null);
-            var length = Interlocked.Exchange(ref _latestBufferLength, 0);
-
-            if (buffer is null || length == 0)
+            while (_isAttached && !token.IsCancellationRequested)
             {
-                Volatile.Write(ref _decoding, 0);
+                var buffer = Interlocked.Exchange(ref _latestBuffer, null);
+                var length = Interlocked.Exchange(ref _latestBufferLength, 0);
 
-                if (_latestBuffer is not null &&
-                    Interlocked.CompareExchange(ref _decoding, 1, 0) == 0)
+                if (buffer is null || length == 0)
                 {
-                    continue;
-                }
-
-                return;
-            }
-
-            if (token.IsCancellationRequested)
-            {
-                ArrayPool<byte>.Shared.Return(buffer);
-                return;
-            }
-
-            Bitmap? newBitmap = null;
-            try
-            {
-                // 尝试获取信号量，超时则跳过此帧（避免积压）
-                if (!SDecodeSemaphore.Wait(0, token))
-                {
-                    // 信号量不可用，丢弃此帧，继续处理下一帧
-                    ArrayPool<byte>.Shared.Return(buffer);
-                    continue;
-                }
-
-                try
-                {
-                    if (token.IsCancellationRequested)
-                    {
-                        ArrayPool<byte>.Shared.Return(buffer);
-                        return;
-                    }
-
-                    // 使用 SkiaSharp 解码并预缩放
-                    newBitmap = DecodeAndScaleBitmap(buffer, length);
-                }
-                finally
-                {
-                    SDecodeSemaphore.Release();
-                    ArrayPool<byte>.Shared.Return(buffer);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            catch
-            {
-                continue;
-            }
-
-            if (newBitmap is null)
-            {
-                continue;
-            }
-
-            if (!_isAttached || token.IsCancellationRequested)
-            {
-                newBitmap.Dispose();
-                return;
-            }
-
-            var capturedToken = token;
-            var bitmapToSet = newBitmap;
-
-            // 使用 Post 确保 Bitmap 及时更新（GPU 渲染更流畅）
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (!_isAttached || capturedToken.IsCancellationRequested)
-                {
-                    bitmapToSet?.Dispose();
                     return;
                 }
 
-                var oldBitmap = Bitmap;
-                Bitmap = bitmapToSet;
-
-                // 将旧 Bitmap 回收到后台缓冲区（如果尺寸匹配）
-                // 并避免释放来自 SourceView 的共享 Bitmap（比较引用）
-                if (oldBitmap is not null && !ReferenceEquals(oldBitmap, SourceView?.Bitmap))
+                Bitmap? newBitmap = null;
+                try
                 {
-                    if (oldBitmap is WriteableBitmap oldWriteable)
+                    if (token.IsCancellationRequested)
+                        return;
+
+                    // 尝试获取信号量，超时则跳过此帧（避免积压）
+                    if (!SDecodeSemaphore.Wait(0, token))
+                        continue;
+
+                    try
                     {
-                        RecycleToBackBuffer(oldWriteable);
+                        if (token.IsCancellationRequested)
+                            return;
+
+                        // 使用 SkiaSharp 解码并预缩放
+                        newBitmap = DecodeAndScaleBitmap(buffer, length);
                     }
-                    else
+                    finally
                     {
-                        // 非可回收的 Bitmap，直接释放以避免泄漏
-                        oldBitmap.Dispose();
+                        SDecodeSemaphore.Release();
                     }
                 }
-            }, DispatcherPriority.Render);
-        }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch
+                {
+                    continue;
+                }
+                finally
+                {
+                    // buffer 统一在此处归还，避免双归还和泄漏
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
 
-        Volatile.Write(ref _decoding, 0);
+                if (newBitmap is null)
+                    continue;
+
+                if (!_isAttached || token.IsCancellationRequested)
+                {
+                    newBitmap.Dispose();
+                    return;
+                }
+
+                var capturedToken = token;
+                var bitmapToSet = newBitmap;
+
+                // 使用 Post 确保 Bitmap 及时更新（GPU 渲染更流畅）
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (!_isAttached || capturedToken.IsCancellationRequested)
+                    {
+                        bitmapToSet?.Dispose();
+                        return;
+                    }
+
+                    var oldBitmap = Bitmap;
+                    Bitmap = bitmapToSet;
+
+                    // 将旧 Bitmap 回收到后台缓冲区（如果尺寸匹配）
+                    // 并避免释放来自 SourceView 的共享 Bitmap（比较引用）
+                    if (oldBitmap is not null && !ReferenceEquals(oldBitmap, SourceView?.Bitmap))
+                    {
+                        if (oldBitmap is WriteableBitmap oldWriteable)
+                            RecycleToBackBuffer(oldWriteable);
+                        else
+                            oldBitmap.Dispose();
+                    }
+                }, DispatcherPriority.Render);
+            }
+        }
+        finally
+        {
+            // 所有退出路径都重置 _decoding 标志
+            Volatile.Write(ref _decoding, 0);
+
+            // lost-wakeup 检查：如果有新数据到达但 DecodeLoop 已退出，重新排队
+            if (_isAttached && _latestBuffer is not null &&
+                Interlocked.CompareExchange(ref _decoding, 1, 0) == 0)
+            {
+                ThreadPool.UnsafeQueueUserWorkItem(static ctrl => ctrl.DecodeLoop(), this, preferLocal: false);
+            }
+        }
     }
 
     /// <summary>

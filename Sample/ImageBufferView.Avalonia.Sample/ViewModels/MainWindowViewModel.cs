@@ -1,4 +1,4 @@
-﻿using ReactiveUI;
+using ReactiveUI;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -73,6 +73,15 @@ public class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// 当前格式名称（用于 UI 显示）
+    /// </summary>
+    public string CurrentFormatName
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = "Bgra32";
+
+    /// <summary>
     /// 待播放图片流缓存
     /// </summary>
     private readonly List<ArraySegment<byte>> _encodedBuffers = [];
@@ -132,27 +141,46 @@ public class MainWindowViewModel : ViewModelBase
         CancellationTokenSource = null;
     }
 
+    private bool _useBgra32 = true;
+
     private async ValueTask LoadImage(CancellationToken token)
     {
-        //PixelBufferFormat = PixelBufferFormat.Bgr24;
-        //await LoadBgr24Buffer(token);
-        //RunBgr24Buffer(token);
+        // 预加载两种格式的缓冲区
+        await LoadBgra32Buffer(token);
+        await LoadEncodedBuffer(token);
 
-        //PixelBufferFormat = PixelBufferFormat.Bgra32;
-        //await LoadBgra32Buffer(token);
-        //RunBgra32Buffer(token);
+        // 默认启动 Bgra32
+        _useBgra32 = true;
+        PixelBufferFormat = PixelBufferFormat.Bgra32;
+        CurrentFormatName = "Bgra32 128x128";
+        RunBgra32Buffer(token);
+    }
 
-        //PixelBufferFormat = PixelBufferFormat.Rgb24;
-        //await LoadRgb24Buffer(token);
-        //RunRgb24Buffer(token);
+    public void SwitchFormat()
+    {
+        // 先停止当前播放
+        CancellationTokenSource?.Cancel();
+        CancellationTokenSource = null;
+        ImageBuffer = default;
 
-        PixelBufferFormat = PixelBufferFormat.Rgba32;
-        await LoadRgba32Buffer(token);
-        RunRgba32Buffer(token);
+        // 切换格式
+        _useBgra32 = !_useBgra32;
 
-        //PixelBufferFormat = PixelBufferFormat.Encoded;
-        //await LoadEncodedBuffer(token);
-        //RunEncodedBuffer(token);
+        CancellationTokenSource = new CancellationTokenSource();
+        var token = CancellationTokenSource.Token;
+
+        if (_useBgra32)
+        {
+            PixelBufferFormat = PixelBufferFormat.Bgra32;
+            CurrentFormatName = "Bgra32 128x128";
+            RunBgra32Buffer(token);
+        }
+        else
+        {
+            PixelBufferFormat = PixelBufferFormat.Encoded;
+            CurrentFormatName = "Encoded (JPEG)";
+            RunEncodedBuffer(token);
+        }
     }
 
 
