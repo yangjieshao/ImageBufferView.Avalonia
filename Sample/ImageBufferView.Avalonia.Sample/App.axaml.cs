@@ -1,7 +1,8 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
-using ImageBufferView.Avalonia.Sample.Views;
+using Avalonia.Input;
 using Avalonia.Markup.Xaml;
+using ImageBufferView.Avalonia.Sample.Views;
 
 namespace ImageBufferView.Avalonia.Sample
 {
@@ -12,11 +13,11 @@ namespace ImageBufferView.Avalonia.Sample
             AvaloniaXamlLoader.Load(this);
 #if DEBUG
             //this.AttachDeveloperTools();
-            //this.AttachDeveloperTools((options) =>
-            //{
-            //    options.Gesture = new Avalonia.Input.KeyGesture(Avalonia.Input.Key.F11, Avalonia.Input.KeyModifiers.None);
-            //    options.AutoConnectFromDesignMode = true;
-            //});
+            this.AttachDeveloperTools((options) =>
+            {
+                options.Gesture = new KeyGesture(Key.F11);
+                options.AutoConnectFromDesignMode = true;
+            });
 #endif
         }
 

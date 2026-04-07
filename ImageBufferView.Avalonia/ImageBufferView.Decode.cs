@@ -15,6 +15,13 @@ namespace ImageBufferView.Avalonia;
 /// </summary>
 public partial class ImageBufferView
 {
+    /// <summary>
+    /// 默认采样选项：线性过滤 + 线性 Mipmap，等效于原 SKFilterQuality.Medium
+    /// 适用于缩小场景，在质量和性能之间取得平衡
+    /// </summary>
+    private static readonly SKSamplingOptions DefaultSamplingOptions =
+        new(SKFilterMode.Linear, SKMipmapMode.Linear);
+
     // Reference wrapper for PixelSize to allow atomic Volatile read/write of the reference
     private sealed class PixelSizeBox
     {
@@ -156,8 +163,7 @@ public partial class ImageBufferView
             var targetHeight = Math.Max(1, (int)(sourceHeight * scale.Y));
 
             // 使用 SkiaSharp 高效缩放
-            using var resizedBitmap =
-                skBitmap.Resize(new SKImageInfo(targetWidth, targetHeight), SKFilterQuality.Medium);
+            using var resizedBitmap = skBitmap.Resize(new SKImageInfo(targetWidth, targetHeight, skBitmap.ColorType, skBitmap.AlphaType), DefaultSamplingOptions);
 
             if (resizedBitmap is null)
             {
@@ -268,7 +274,7 @@ public partial class ImageBufferView
 
             using (srcBitmap)
             {
-                scaledBitmap = srcBitmap.Resize(new SKImageInfo(targetWidth, targetHeight), SKFilterQuality.Medium);
+                scaledBitmap = srcBitmap.Resize(new SKImageInfo(targetWidth, targetHeight, srcBitmap.ColorType, srcBitmap.AlphaType), DefaultSamplingOptions);
                 if (scaledBitmap is null)
                 {
                     // Resize 失败时以源尺寸兜底，保证不丢帧
@@ -285,8 +291,7 @@ public partial class ImageBufferView
 
     /// <summary>
     /// 尝试获取原始像素格式对应的 Skia 图像信息，仅适用于可直接映射到 Skia ColorType 的格式。
-    /// BGR24 / RGB24 等在 SkiaSharp 2.88.x 中无对应的 24bpp ColorType，返回 <see langword="false"/>，
-    /// 调用方应回退到 <see cref="CreateSkBitmapFromRaw"/> 路径。
+    /// SkiaSharp 3.x 增加了更多 ColorType 支持，可直接映射大部分常用格式。
     /// </summary>
     /// <param name="format">原始像素格式</param>
     /// <param name="width">图像宽度（像素）</param>
@@ -307,14 +312,14 @@ public partial class ImageBufferView
         {
             case PixelBufferFormat.Bgra32:
                 // 内存布局：B G R A，与 Skia Bgra8888 完全一致
-                // 与 CreateSkBitmapFromRaw 保持一致：约定 Bgra32 数据为预乘格式（调用方责任）
+                // 约定 Bgra32 数据为预乘格式（调用方责任）
                 expectedLen = checked(width * height * 4);
                 info = new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
                 return true;
 
             case PixelBufferFormat.Rgba32:
                 // 内存布局：R G B A，与 Skia Rgba8888 完全一致
-                // 与 CreateSkBitmapFromRaw 保持一致：约定 Rgba32 数据为预乘格式（调用方责任）
+                // 约定 Rgba32 数据为预乘格式（调用方责任）
                 expectedLen = checked(width * height * 4);
                 info = new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul);
                 return true;
@@ -343,7 +348,108 @@ public partial class ImageBufferView
                 info = new SKImageInfo(width, height, SKColorType.Gray8, SKAlphaType.Opaque);
                 return true;
 
-            // BGR24 / RGB24：Skia 2.88.x 中不存在 24bpp BGR ColorType，无法直接映射
+            case PixelBufferFormat.Alpha8:
+                // 8bpp 仅 Alpha 通道
+                expectedLen = checked(width * height);
+                info = new SKImageInfo(width, height, SKColorType.Alpha8, SKAlphaType.Premul);
+                return true;
+
+            case PixelBufferFormat.Argb4444:
+                // 16bpp ARGB4444
+                expectedLen = checked(width * height * 2);
+                info = new SKImageInfo(width, height, SKColorType.Argb4444, SKAlphaType.Premul);
+                return true;
+
+            case PixelBufferFormat.Rgba1010102:
+                // 32bpp RGBA 10-10-10-2，高动态范围格式
+                expectedLen = checked(width * height * 4);
+                info = new SKImageInfo(width, height, SKColorType.Rgba1010102, SKAlphaType.Premul);
+                return true;
+
+            case PixelBufferFormat.Bgra1010102:
+                // 32bpp BGRA 10-10-10-2，高动态范围格式
+                expectedLen = checked(width * height * 4);
+                info = new SKImageInfo(width, height, SKColorType.Bgra1010102, SKAlphaType.Premul);
+                return true;
+
+            case PixelBufferFormat.Rgb101010x:
+                // 32bpp RGB 10-10-10-x，高动态范围不透明格式
+                expectedLen = checked(width * height * 4);
+                info = new SKImageInfo(width, height, SKColorType.Rgb101010x, SKAlphaType.Opaque);
+                return true;
+
+            case PixelBufferFormat.Bgr101010x:
+                // 32bpp BGR 10-10-10-x，高动态范围不透明格式
+                expectedLen = checked(width * height * 4);
+                info = new SKImageInfo(width, height, SKColorType.Bgr101010x, SKAlphaType.Opaque);
+                return true;
+
+            case PixelBufferFormat.Srgba8888:
+                // 32bpp sRGBA，sRGB 色彩空间
+                expectedLen = checked(width * height * 4);
+                info = new SKImageInfo(width, height, SKColorType.Srgba8888, SKAlphaType.Premul);
+                return true;
+
+            case PixelBufferFormat.Rg88:
+                // 16bpp RG 双通道
+                expectedLen = checked(width * height * 2);
+                info = new SKImageInfo(width, height, SKColorType.Rg88, SKAlphaType.Opaque);
+                return true;
+
+            case PixelBufferFormat.RgbaF16:
+                // 64bpp RGBA 半精度浮点
+                expectedLen = checked(width * height * 8);
+                info = new SKImageInfo(width, height, SKColorType.RgbaF16, SKAlphaType.Premul);
+                return true;
+
+            case PixelBufferFormat.RgbaF16Clamped:
+                // 64bpp RGBA 半精度浮点（值限制在 0.0-1.0）
+                expectedLen = checked(width * height * 8);
+                info = new SKImageInfo(width, height, SKColorType.RgbaF16Clamped, SKAlphaType.Premul);
+                return true;
+
+            case PixelBufferFormat.RgbaF32:
+                // 128bpp RGBA 单精度浮点
+                expectedLen = checked(width * height * 16);
+                info = new SKImageInfo(width, height, SKColorType.RgbaF32, SKAlphaType.Premul);
+                return true;
+
+            case PixelBufferFormat.Alpha16:
+                // 16bpp 仅 Alpha 通道
+                expectedLen = checked(width * height * 2);
+                info = new SKImageInfo(width, height, SKColorType.Alpha16, SKAlphaType.Premul);
+                return true;
+
+            case PixelBufferFormat.Rg1616:
+                // 32bpp RG 双通道 16 位
+                expectedLen = checked(width * height * 4);
+                info = new SKImageInfo(width, height, SKColorType.Rg1616, SKAlphaType.Opaque);
+                return true;
+
+            case PixelBufferFormat.Rgba16161616:
+                // 64bpp RGBA 每通道 16 位
+                expectedLen = checked(width * height * 8);
+                info = new SKImageInfo(width, height, SKColorType.Rgba16161616, SKAlphaType.Premul);
+                return true;
+
+            case PixelBufferFormat.AlphaF16:
+                // 16bpp 半精度浮点 Alpha 通道
+                expectedLen = checked(width * height * 2);
+                info = new SKImageInfo(width, height, SKColorType.AlphaF16, SKAlphaType.Premul);
+                return true;
+
+            case PixelBufferFormat.RgF16:
+                // 32bpp RG 双通道半精度浮点
+                expectedLen = checked(width * height * 4);
+                info = new SKImageInfo(width, height, SKColorType.RgF16, SKAlphaType.Opaque);
+                return true;
+
+            case PixelBufferFormat.R8Unorm:
+                // 8bpp 单通道归一化格式
+                expectedLen = checked(width * height);
+                info = new SKImageInfo(width, height, SKColorType.R8Unorm, SKAlphaType.Opaque);
+                return true;
+
             default:
                 return false;
         }
@@ -354,8 +460,10 @@ public partial class ImageBufferView
     /// 通过 SKBitmap.InstallPixels 零拷贝包装原始缓冲区，再借助 Skia 的
     /// SKCanvas.DrawBitmap 完成缩放，避免分配全尺寸中间 <see cref="SKBitmap"/>。
     /// <para>
-    /// 仅支持可直接映射到 Skia ColorType 的格式（BGRA32/RGBA32/Bgr32/Rgb32/Rgb565/Gray8）。
-    /// 对 BGR24/RGB24 等格式返回 <see langword="null"/>，调用方应回退到
+    /// SkiaSharp 3.x 支持更多 ColorType，包括 BGRA32/RGBA32/Bgr32/Rgb32/Rgb565/Gray8/
+    /// Alpha8/Argb4444/Rgba1010102/Bgra1010102/Rgb101010x/Bgr101010x/Srgba8888/
+    /// Rg88/RgbaF16/RgbaF16Clamped/RgbaF32/Alpha16/Rg1616/Rgba16161616/AlphaF16/RgF16/R8Unorm 等。
+    /// 不支持的格式返回 <see langword="null"/>，调用方应回退到
     /// <see cref="CreateSkBitmapFromRaw"/> + Resize 路径。
     /// </para>
     /// </summary>
@@ -380,7 +488,7 @@ public partial class ImageBufferView
 
         if (!TryGetRawPixmapInfo(format, srcWidth, srcHeight, out var srcInfo, out var expectedLen))
         {
-            // 格式无法直接映射到 Skia ColorType（如 BGR24/RGB24），通知调用方走回退路径
+            // 格式无法直接映射到 Skia ColorType，通知调用方走回退路径
             return null;
         }
 
@@ -407,15 +515,13 @@ public partial class ImageBufferView
                         return null;
                     }
 
-                    using var canvas = new SKCanvas(dstBitmap);
-                    using var paint = new SKPaint();
-                    paint.FilterQuality = SKFilterQuality.Medium;
-                    paint.IsAntialias = false;
-                    var srcRect = new SKRect(0, 0, srcWidth, srcHeight);
-                    var dstRect = new SKRect(0, 0, dstWidth, dstHeight);
-
+                    // 使用 ScalePixels 直接缩放到目标 bitmap，避免 Canvas 绘制开销
                     // Skia 内部处理色彩空间转换与缩放，可利用 SIMD 优化路径
-                    canvas.DrawBitmap(srcBitmap, srcRect, dstRect, paint);
+                    if (!srcBitmap.ScalePixels(dstBitmap, DefaultSamplingOptions))
+                    {
+                        dstBitmap.Dispose();
+                        return null;
+                    }
                 }
             }
 
@@ -549,7 +655,8 @@ public partial class ImageBufferView
     }
 
     /// <summary>
-    /// 将原始像素缓冲区转换为 SKBitmap（仅支持 Bgra32/Rgba32/Bgr24/Rgb24/Gray8）。
+    /// 将原始像素缓冲区转换为 SKBitmap，支持 SkiaSharp 3.x 中所有可映射的 ColorType。
+    /// 通过 TryGetRawPixmapInfo 统一获取格式信息，避免重复逻辑。
     /// </summary>
     /// <param name="buffer">包含原始像素数据的字节数组</param>
     /// <param name="length">有效字节数</param>
@@ -566,139 +673,35 @@ public partial class ImageBufferView
             return null;
         }
 
-        switch (format)
+        // 使用统一的格式映射逻辑
+        if (!TryGetRawPixmapInfo(format, imageWidth, imageHeight, out var info, out var expectedLen))
         {
-            case PixelBufferFormat.Bgra32:
+            return null;
+        }
+
+        if (length < expectedLen)
+        {
+            return null;
+        }
+
+        var bitmap = new SKBitmap(info);
+        try
+        {
+            unsafe
             {
-                var expectedLen = imageWidth * imageHeight * 4;
-                if (length < expectedLen)
+                fixed (byte* src = buffer)
                 {
-                    return null;
+                    // 单次 MemoryCopy，无逐行循环
+                    Buffer.MemoryCopy(src, (void*)bitmap.GetPixels(), expectedLen, expectedLen);
                 }
-
-                var bitmap =
-                    new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Bgra8888, SKAlphaType.Premul));
-                unsafe
-                {
-                    fixed (byte* src = buffer)
-                    {
-                        Buffer.MemoryCopy(src, (void*)bitmap.GetPixels(), expectedLen, expectedLen);
-                    }
-                }
-
-                return bitmap;
             }
 
-            case PixelBufferFormat.Rgba32:
-            {
-                var expectedLen = imageWidth * imageHeight * 4;
-                if (length < expectedLen)
-                {
-                    return null;
-                }
-
-                var bitmap =
-                    new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Rgba8888, SKAlphaType.Premul));
-                unsafe
-                {
-                    fixed (byte* src = buffer)
-                    {
-                        Buffer.MemoryCopy(src, (void*)bitmap.GetPixels(), expectedLen, expectedLen);
-                    }
-                }
-
-                return bitmap;
-            }
-
-            case PixelBufferFormat.Bgr32:
-            {
-                // 内存布局：B G R X（X 为填充字节），直接作为 Bgra8888 Opaque 使用
-                var expectedLen = imageWidth * imageHeight * 4;
-                if (length < expectedLen)
-                {
-                    return null;
-                }
-
-                var bitmap =
-                    new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Bgra8888, SKAlphaType.Opaque));
-                unsafe
-                {
-                    fixed (byte* src = buffer)
-                    {
-                        Buffer.MemoryCopy(src, (void*)bitmap.GetPixels(), expectedLen, expectedLen);
-                    }
-                }
-
-                return bitmap;
-            }
-
-            case PixelBufferFormat.Rgb32:
-            {
-                // 内存布局：R G B X，使用 SKColorType.Rgb888x 可直接内存复制
-                var expectedLen = imageWidth * imageHeight * 4;
-                if (length < expectedLen)
-                {
-                    return null;
-                }
-
-                var bitmap =
-                    new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Rgb888x, SKAlphaType.Opaque));
-                unsafe
-                {
-                    fixed (byte* src = buffer)
-                    {
-                        Buffer.MemoryCopy(src, (void*)bitmap.GetPixels(), expectedLen, expectedLen);
-                    }
-                }
-
-                return bitmap;
-            }
-
-            case PixelBufferFormat.Rgb565:
-            {
-                // SKia 原生支持 Rgb565，直接内存复制
-                var expectedLen = imageWidth * imageHeight * 2;
-                if (length < expectedLen)
-                {
-                    return null;
-                }
-
-                var bitmap =
-                    new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Rgb565, SKAlphaType.Opaque));
-                unsafe
-                {
-                    fixed (byte* src = buffer)
-                    {
-                        Buffer.MemoryCopy(src, (void*)bitmap.GetPixels(), expectedLen, expectedLen);
-                    }
-                }
-
-                return bitmap;
-            }
-
-            case PixelBufferFormat.Gray8:
-            {
-                var expectedLen = imageWidth * imageHeight;
-                if (length < expectedLen)
-                {
-                    return null;
-                }
-
-                var bitmap =
-                    new SKBitmap(new SKImageInfo(imageWidth, imageHeight, SKColorType.Gray8, SKAlphaType.Opaque));
-                unsafe
-                {
-                    fixed (byte* src = buffer)
-                    {
-                        Buffer.MemoryCopy(src, (void*)bitmap.GetPixels(), expectedLen, expectedLen);
-                    }
-                }
-
-                return bitmap;
-            }
-
-            default:
-                return null;
+            return bitmap;
+        }
+        catch
+        {
+            bitmap.Dispose();
+            return null;
         }
     }
 

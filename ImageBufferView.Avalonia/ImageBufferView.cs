@@ -34,7 +34,7 @@ public partial class ImageBufferView : Control
         get => Volatile.Read(ref s_maxDecodeConcurrency);
         set
         {
-            if (value <= 0) throw new ArgumentOutOfRangeException(nameof(value));
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
             lock (SDecodeSemaphoreLock)
             {
                 var old = Volatile.Read(ref s_maxDecodeConcurrency);
