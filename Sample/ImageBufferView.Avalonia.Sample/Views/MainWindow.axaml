@@ -82,7 +82,7 @@
                     VerticalAlignment="Center"
                     Text="{Binding CurrentFormatName}" />
 
-               
+
             </Grid>
 
             <TextBlock
@@ -253,18 +253,20 @@
         <Grid
             Grid.Column="1"
             Background="BlueViolet"
-            RowDefinitions="auto,30,30,*">
+            RowDefinitions="auto,30,30,30,30,*">
             <ibv:ImageBufferView
+                Name="CameraView"
                 Grid.Row="0"
                 Width="300"
                 Height="300"
                 Margin="5"
+                FrameIndex="{Binding UsbCamera.FrameIndex}"
                 ImageBuffer="{Binding UsbCamera.CurrentImageBuffer}"
                 InterpolationMode="HighQuality"
                 PixelBufferFormat="{Binding UsbCamera.CurrentPixelBufferFormat}"
                 RawImageHeight="{Binding UsbCamera.CurrentImageHeight}"
                 RawImageWidth="{Binding UsbCamera.CurrentImageWidth}"
-                Stretch="UniformToFill"  FrameIndex="{Binding UsbCamera.FrameIndex}"
+                Stretch="UniformToFill"
                 StretchDirection="Both">
                 <ibv:ImageBufferView.DefaultBackground>
                     <ImageBrush Source="/Assets/Camera.png" Stretch="UniformToFill" />
@@ -300,8 +302,28 @@
                 </ComboBox.ItemTemplate>
             </ComboBox>
 
-            <ibv:ImageBufferView
+            <StackPanel
                 Grid.Row="3"
+                HorizontalAlignment="Center"
+                Orientation="Horizontal"
+                Spacing="6">
+                <Button Click="OnRotateLeft" Content="Rotate -90°" />
+                <Button Click="OnRotateRight" Content="Rotate +90°" />
+                <Button Click="OnRotate180" Content="Rotate 180°" />
+            </StackPanel>
+
+            <StackPanel
+                Grid.Row="4"
+                HorizontalAlignment="Center"
+                Orientation="Horizontal"
+                Spacing="6">
+                <Button Click="OnFlipHorizontal" Content="Flip H" />
+                <Button Click="OnFlipVertical" Content="Flip V" />
+                <Button Click="OnResetTransform" Content="Reset" />
+            </StackPanel>
+
+            <ibv:ImageBufferView
+                Grid.Row="5"
                 Margin="5"
                 ImageBuffer="{Binding ImageBuffer2}"
                 InterpolationMode="LowQuality"

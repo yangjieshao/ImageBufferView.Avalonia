@@ -1,5 +1,7 @@
 ﻿using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
+using Avalonia.Interactivity;
+using ImageBufferView.Avalonia;
 using System;
 using System.Diagnostics;
 
@@ -14,6 +16,70 @@ namespace ImageBufferView.Avalonia.Sample.Views
         public MainWindow()
         {
             InitializeComponent();
+        }
+
+        private void OnRotateLeft(object? sender, RoutedEventArgs e)
+        {
+            if (this.FindControl<ImageBufferView>("CameraView") is { } view)
+            {
+                view.Rotation = view.Rotation switch
+                {
+                    ImageRotation.Rotate0 => ImageRotation.Rotate270,
+                    ImageRotation.Rotate90 => ImageRotation.Rotate0,
+                    ImageRotation.Rotate180 => ImageRotation.Rotate90,
+                    ImageRotation.Rotate270 => ImageRotation.Rotate180,
+                    _ => ImageRotation.Rotate0
+                };
+            }
+        }
+
+        private void OnRotateRight(object? sender, RoutedEventArgs e)
+        {
+            if (this.FindControl<ImageBufferView>("CameraView") is { } view)
+            {
+                view.Rotation = view.Rotation switch
+                {
+                    ImageRotation.Rotate0 => ImageRotation.Rotate90,
+                    ImageRotation.Rotate90 => ImageRotation.Rotate180,
+                    ImageRotation.Rotate180 => ImageRotation.Rotate270,
+                    ImageRotation.Rotate270 => ImageRotation.Rotate0,
+                    _ => ImageRotation.Rotate0
+                };
+            }
+        }
+
+        private void OnRotate180(object? sender, RoutedEventArgs e)
+        {
+            if (this.FindControl<ImageBufferView>("CameraView") is { } view)
+            {
+                view.Rotation = ImageRotation.Rotate180;
+            }
+        }
+
+        private void OnFlipHorizontal(object? sender, RoutedEventArgs e)
+        {
+            if (this.FindControl<ImageBufferView>("CameraView") is { } view)
+            {
+                view.FlipHorizontal = !view.FlipHorizontal;
+            }
+        }
+
+        private void OnFlipVertical(object? sender, RoutedEventArgs e)
+        {
+            if (this.FindControl<ImageBufferView>("CameraView") is { } view)
+            {
+                view.FlipVertical = !view.FlipVertical;
+            }
+        }
+
+        private void OnResetTransform(object? sender, RoutedEventArgs e)
+        {
+            if (this.FindControl<ImageBufferView>("CameraView") is { } view)
+            {
+                view.Rotation = ImageRotation.Rotate0;
+                view.FlipHorizontal = false;
+                view.FlipVertical = false;
+            }
         }
 
         private void InitializeComponent()

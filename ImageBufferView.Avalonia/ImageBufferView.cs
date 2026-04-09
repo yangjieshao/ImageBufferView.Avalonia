@@ -59,11 +59,11 @@ public partial class ImageBufferView : Control
     static ImageBufferView()
     {
         AffectsRender<ImageBufferView>(BitmapProperty, StretchProperty, StretchDirectionProperty,
-            DefaultBackgroundProperty);
+            DefaultBackgroundProperty, RotationProperty, FlipHorizontalProperty, FlipVerticalProperty);
         AffectsMeasure<ImageBufferView>(BitmapProperty, StretchProperty, StretchDirectionProperty,
-            DefaultBackgroundProperty);
+            DefaultBackgroundProperty, RotationProperty, FlipHorizontalProperty, FlipVerticalProperty);
         AffectsArrange<ImageBufferView>(BitmapProperty, StretchProperty, StretchDirectionProperty,
-            DefaultBackgroundProperty);
+            DefaultBackgroundProperty, RotationProperty, FlipHorizontalProperty, FlipVerticalProperty);
 
         BitmapProperty.Changed.AddClassHandler<ImageBufferView>(BitmapChanged);
         ImageBufferProperty.Changed.AddClassHandler<ImageBufferView>(ImageBufferChanged);
@@ -73,6 +73,9 @@ public partial class ImageBufferView : Control
         RawImageWidthProperty.Changed.AddClassHandler<ImageBufferView>(RawFormatChanged);
         RawImageHeightProperty.Changed.AddClassHandler<ImageBufferView>(RawFormatChanged);
         FrameIndexProperty.Changed.AddClassHandler<ImageBufferView>(FrameIndexChanged);
+        RotationProperty.Changed.AddClassHandler<ImageBufferView>(RotationChanged);
+        FlipHorizontalProperty.Changed.AddClassHandler<ImageBufferView>(FlipChanged);
+        FlipVerticalProperty.Changed.AddClassHandler<ImageBufferView>(FlipChanged);
     }
 
     public ImageBufferView()
@@ -211,6 +214,24 @@ public partial class ImageBufferView : Control
             PixelBufferFormat.Encoded);
 
     /// <summary>
+    /// 图片旋转（以度为单位，0/90/180/270）
+    /// </summary>
+    public static readonly StyledProperty<ImageRotation> RotationProperty =
+        AvaloniaProperty.Register<ImageBufferView, ImageRotation>(nameof(Rotation), ImageRotation.Rotate0);
+
+    /// <summary>
+    /// 水平镜像
+    /// </summary>
+    public static readonly StyledProperty<bool> FlipHorizontalProperty =
+        AvaloniaProperty.Register<ImageBufferView, bool>(nameof(FlipHorizontal), false);
+
+    /// <summary>
+    /// 垂直镜像
+    /// </summary>
+    public static readonly StyledProperty<bool> FlipVerticalProperty =
+        AvaloniaProperty.Register<ImageBufferView, bool>(nameof(FlipVertical), false);
+
+    /// <summary>
     /// 像素缓冲格式（默认 Encoded，即解码 JPEG/PNG 等编码格式）。
     /// 设置为非 Encoded 时，<see cref="ImageBuffer"/> 应传入未编码的原始像素数据，
     /// 且必须同时配置 <see cref="RawImageWidth"/> 和 <see cref="RawImageHeight"/>。
@@ -219,6 +240,33 @@ public partial class ImageBufferView : Control
     {
         get => GetValue(PixelBufferFormatProperty);
         set => SetValue(PixelBufferFormatProperty, value);
+    }
+
+    /// <summary>
+    /// 图片旋转（以度为单位，0/90/180/270）
+    /// </summary>
+    public ImageRotation Rotation
+    {
+        get => GetValue(RotationProperty);
+        set => SetValue(RotationProperty, value);
+    }
+
+    /// <summary>
+    /// 水平镜像
+    /// </summary>
+    public bool FlipHorizontal
+    {
+        get => GetValue(FlipHorizontalProperty);
+        set => SetValue(FlipHorizontalProperty, value);
+    }
+
+    /// <summary>
+    /// 垂直镜像
+    /// </summary>
+    public bool FlipVertical
+    {
+        get => GetValue(FlipVerticalProperty);
+        set => SetValue(FlipVerticalProperty, value);
     }
 
     /// <summary>
@@ -389,6 +437,18 @@ public partial class ImageBufferView : Control
         sender.TryDecodeCurrentBuffer();
     }
 
+    private static void RotationChanged(ImageBufferView sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        // Rotation only affects rendering transform
+        sender.InvalidateVisual();
+    }
+
+    private static void FlipChanged(ImageBufferView sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        // Flip only affects rendering transform
+        sender.InvalidateVisual();
+    }
+
     /// <summary>
     /// 当帧号变化时，若控件已附加且 ImageBuffer 有内容，则强制触发一次解码刷新。
     /// 适用于数据源直接修改 <see cref="ImageBuffer"/> 内部字节内容而不替换对象的场景。
@@ -550,12 +610,23 @@ public partial class ImageBufferView : Control
     }
 
     /// <summary>
+    /// 获取考虑旋转后的有效源图片尺寸（90°/270° 时交换宽高）
+    /// </summary>
+    private Size GetEffectiveSourceSize()
+    {
+        var src = SourceSize;
+        return Rotation is ImageRotation.Rotate90 or ImageRotation.Rotate270
+            ? new Size(src.Height, src.Width)
+            : src;
+    }
+
+    /// <summary>
     /// 测量覆盖：根据 Bitmap 和 Stretch 计算所需大小
     /// </summary>
     protected override Size MeasureOverride(Size availableSize)
     {
         return Bitmap is not null
-            ? Stretch.CalculateSize(availableSize, SourceSize, StretchDirection)
+            ? Stretch.CalculateSize(availableSize, GetEffectiveSourceSize(), StretchDirection)
             : base.MeasureOverride(availableSize);
     }
 
@@ -565,7 +636,7 @@ public partial class ImageBufferView : Control
     protected override Size ArrangeOverride(Size finalSize)
     {
         return Bitmap is not null
-            ? Stretch.CalculateSize(finalSize, SourceSize)
+            ? Stretch.CalculateSize(finalSize, GetEffectiveSourceSize())
             : base.ArrangeOverride(finalSize);
     }
 
@@ -579,18 +650,86 @@ public partial class ImageBufferView : Control
             if (Bitmap is not null && SourceSize is { Width: > 0.0, Height: > 0.0 })
             {
                 var viewPort = new Rect(RenderSize);
-                var sourceSize = SourceSize;
-                var scale = Stretch.CalculateScaling(RenderSize, sourceSize, StretchDirection);
 
-                if (scale is { X: > 0.0, Y: > 0.0 })
+                var rotation = Rotation;
+                var flipH = FlipHorizontal;
+                var flipV = FlipVertical;
+
+                // Fast path: no rotation nor flip -> original drawing logic
+                if (rotation == ImageRotation.Rotate0 && !flipH && !flipV)
                 {
-                    var scaledSize = sourceSize * scale;
-                    var destRect = viewPort.CenterRect(new Rect(scaledSize)).Intersect(viewPort);
+                    var sourceSize = SourceSize;
+                    var scale = Stretch.CalculateScaling(RenderSize, sourceSize, StretchDirection);
 
-                    if (destRect is { Width: > 0.0, Height: > 0.0 })
+                    if (scale is { X: > 0.0, Y: > 0.0 })
                     {
-                        var sourceRect = new Rect(sourceSize).CenterRect(new Rect(destRect.Size / scale));
-                        drawingContext.DrawImage(Bitmap, sourceRect, destRect);
+                        var scaledSize = sourceSize * scale;
+                        var destRect = viewPort.CenterRect(new Rect(scaledSize)).Intersect(viewPort);
+
+                        if (destRect is { Width: > 0.0, Height: > 0.0 })
+                        {
+                            var sourceRect = new Rect(sourceSize).CenterRect(new Rect(destRect.Size / scale));
+                            drawingContext.DrawImage(Bitmap, sourceRect, destRect);
+                        }
+                    }
+                }
+                else
+                {
+                    // Transform path: consider rotation for layout size calculation
+                    var sourceSize = SourceSize;
+                    var isSwapped = rotation is ImageRotation.Rotate90 or ImageRotation.Rotate270;
+                    var layoutSize = isSwapped ? new Size(sourceSize.Height, sourceSize.Width) : sourceSize;
+
+                    var scale = Stretch.CalculateScaling(RenderSize, layoutSize, StretchDirection);
+
+                    if (scale is { X: > 0.0, Y: > 0.0 })
+                    {
+                        // fullDest: the final on-screen rect after rotation (may exceed viewport for UniformToFill)
+                        var fullDest = viewPort.CenterRect(new Rect(layoutSize * scale));
+                        var center = fullDest.Center;
+
+                        // drawRect: the rect we actually draw the bitmap into BEFORE rotation.
+                        // For 90/270 the bitmap is landscape but the layout is portrait (or vice-versa),
+                        // so swap width/height so the bitmap keeps its native aspect ratio.
+                        var drawRect = isSwapped
+                            ? new Rect(center.X - fullDest.Height / 2, center.Y - fullDest.Width / 2,
+                                       fullDest.Height, fullDest.Width)
+                            : fullDest;
+
+                        // sourceRect covers the full bitmap in its original (un-rotated) pixel space
+                        var sourceRect = new Rect(sourceSize);
+
+                        var sx = flipH ? -1.0 : 1.0;
+                        var sy = flipV ? -1.0 : 1.0;
+
+                        var angle = rotation switch
+                        {
+                            ImageRotation.Rotate90 => 90.0,
+                            ImageRotation.Rotate180 => 180.0,
+                            ImageRotation.Rotate270 => 270.0,
+                            _ => 0.0
+                        };
+
+                        // Compose matrix: Scale(flip) then Rotate, all about center
+                        var rad = angle * Math.PI / 180.0;
+                        var c = Math.Cos(rad);
+                        var s = Math.Sin(rad);
+
+                        var L00 = c * sx;
+                        var L01 = -s * sy;
+                        var L10 = s * sx;
+                        var L11 = c * sy;
+
+                        var offsetX = -L00 * center.X - L01 * center.Y + center.X;
+                        var offsetY = -L10 * center.X - L11 * center.Y + center.Y;
+
+                        var m = new Matrix(L00, L10, L01, L11, offsetX, offsetY);
+
+                        using (drawingContext.PushClip(viewPort))
+                        using (drawingContext.PushTransform(m))
+                        {
+                            drawingContext.DrawImage(Bitmap, sourceRect, drawRect);
+                        }
                     }
                 }
             }
