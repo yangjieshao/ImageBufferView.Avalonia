@@ -266,7 +266,7 @@
                 PixelBufferFormat="{Binding UsbCamera.CurrentPixelBufferFormat}"
                 RawImageHeight="{Binding UsbCamera.CurrentImageHeight}"
                 RawImageWidth="{Binding UsbCamera.CurrentImageWidth}"
-                Stretch="UniformToFill"
+                Stretch="Uniform"
                 StretchDirection="Both">
                 <ibv:ImageBufferView.DefaultBackground>
                     <ImageBrush Source="/Assets/Camera.png" Stretch="UniformToFill" />
@@ -307,9 +307,9 @@
                 HorizontalAlignment="Center"
                 Orientation="Horizontal"
                 Spacing="6">
-                <Button Click="OnRotateLeft" Content="Rotate -90°" />
-                <Button Click="OnRotateRight" Content="Rotate +90°" />
-                <Button Click="OnRotate180" Content="Rotate 180°" />
+                <Button x:Name="RotateLeftButton" Content="Rotate -90°" />
+                <Button x:Name="RotateRightButton" Content="Rotate +90°" />
+                <Button x:Name="Rotate180Button" Content="Rotate 180°" />
             </StackPanel>
 
             <StackPanel
@@ -317,9 +317,9 @@
                 HorizontalAlignment="Center"
                 Orientation="Horizontal"
                 Spacing="6">
-                <Button Click="OnFlipHorizontal" Content="Flip H" />
-                <Button Click="OnFlipVertical" Content="Flip V" />
-                <Button Click="OnResetTransform" Content="Reset" />
+                <Button x:Name="FlipHorizontalButton" Content="Flip H" />
+                <Button x:Name="FlipVerticalButton" Content="Flip V" />
+                <Button x:Name="ResetTransformButton" Content="Reset" />
             </StackPanel>
 
             <ibv:ImageBufferView

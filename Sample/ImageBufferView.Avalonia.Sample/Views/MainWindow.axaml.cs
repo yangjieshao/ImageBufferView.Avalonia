@@ -86,6 +86,13 @@ namespace ImageBufferView.Avalonia.Sample.Views
         {
             AvaloniaXamlLoader.Load(this);
 
+            this.FindControl<Button>("RotateLeftButton")!.Click += OnRotateLeft;
+            this.FindControl<Button>("RotateRightButton")!.Click += OnRotateRight;
+            this.FindControl<Button>("Rotate180Button")!.Click += OnRotate180;
+            this.FindControl<Button>("FlipHorizontalButton")!.Click += OnFlipHorizontal;
+            this.FindControl<Button>("FlipVerticalButton")!.Click += OnFlipVertical;
+            this.FindControl<Button>("ResetTransformButton")!.Click += OnResetTransform;
+
             // 使用 RequestAnimationFrame 统计渲染帧率（类似 WPF 的 CompositionTarget.Rendering）
             RequestAnimationFrame();
         }

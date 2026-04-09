@@ -352,6 +352,9 @@ public partial class ImageBufferView : Control
     // SourceView 订阅相关
     private IDisposable? _sourceViewSubscription;
 
+    // 原始（未预缩放）源图片尺寸，用于布局计算以避免预缩放 ↔ 布局反馈振荡
+    private Size _originalSourceSize;
+
     #endregion
 
     /// <summary>
@@ -375,9 +378,10 @@ public partial class ImageBufferView : Control
 
         if (e.NewValue is ImageBufferView sourceView)
         {
-            // 立即同步当前 Bitmap
+            // 立即同步当前 Bitmap 及原始源分辨率
             sender.Bitmap = sourceView.Bitmap;
             sender.SourceSize = sourceView.SourceSize;
+            sender._originalSourceSize = sourceView._originalSourceSize;
 
             // 订阅源控件的 Bitmap 变化
             sender._sourceViewSubscription = sourceView.GetObservable(BitmapProperty)
@@ -385,11 +389,13 @@ public partial class ImageBufferView : Control
                 {
                     sender.Bitmap = bitmap;
                     sender.SourceSize = bitmap?.Size ?? sender.RenderSize;
+                    sender._originalSourceSize = sourceView._originalSourceSize;
                 }));
         }
         else
         {
             sender.Bitmap = null;
+            sender._originalSourceSize = default;
         }
     }
 
@@ -421,11 +427,30 @@ public partial class ImageBufferView : Control
     }
 
     /// <summary>
-    /// 当 Bitmap 属性改变时更新 SourceSize
+    /// 当 Bitmap 属性改变时更新 SourceSize 和 _originalSourceSize
     /// </summary>
     private static void BitmapChanged(ImageBufferView sender, AvaloniaPropertyChangedEventArgs e)
     {
-        sender.SourceSize = e.NewValue is Bitmap bitmap ? bitmap.Size : sender.RenderSize;
+        if (e.NewValue is Bitmap bitmap)
+        {
+            sender.SourceSize = bitmap.Size;
+            // 从解码结果读取原始源分辨率（未预缩放），用于稳定布局
+            var box = Volatile.Read(ref sender._lastDecodedSourceSizeBox);
+            if (box is not null)
+            {
+                var ps = box.Value;
+                sender._originalSourceSize = new Size(ps.Width, ps.Height);
+            }
+            else
+            {
+                sender._originalSourceSize = bitmap.Size;
+            }
+        }
+        else
+        {
+            sender.SourceSize = sender.RenderSize;
+            sender._originalSourceSize = default;
+        }
     }
 
     /// <summary>
@@ -610,11 +635,12 @@ public partial class ImageBufferView : Control
     }
 
     /// <summary>
-    /// 获取考虑旋转后的有效源图片尺寸（90°/270° 时交换宽高）
+    /// 获取考虑旋转后的有效源图片尺寸（90°/270° 时交换宽高）。
+    /// 优先使用原始（未预缩放）分辨率以避免预缩放 ↔ 布局反馈振荡。
     /// </summary>
     private Size GetEffectiveSourceSize()
     {
-        var src = SourceSize;
+        var src = _originalSourceSize is { Width: > 0, Height: > 0 } ? _originalSourceSize : SourceSize;
         return Rotation is ImageRotation.Rotate90 or ImageRotation.Rotate270
             ? new Size(src.Height, src.Width)
             : src;
@@ -675,10 +701,11 @@ public partial class ImageBufferView : Control
                 }
                 else
                 {
-                    // Transform path: consider rotation for layout size calculation
-                    var sourceSize = SourceSize;
+                    // Transform path: use original source size for layout to avoid pre-scale feedback jitter
+                    var sourceSize = SourceSize; // bitmap pixel dimensions for sourceRect
+                    var origSize = _originalSourceSize is { Width: > 0, Height: > 0 } ? _originalSourceSize : sourceSize;
                     var isSwapped = rotation is ImageRotation.Rotate90 or ImageRotation.Rotate270;
-                    var layoutSize = isSwapped ? new Size(sourceSize.Height, sourceSize.Width) : sourceSize;
+                    var layoutSize = isSwapped ? new Size(origSize.Height, origSize.Width) : origSize;
 
                     var scale = Stretch.CalculateScaling(RenderSize, layoutSize, StretchDirection);
 
@@ -783,6 +810,7 @@ public partial class ImageBufferView : Control
 
         // 清理后台缓冲区
         ClearBackBuffer();
+        _originalSourceSize = default;
 
         base.OnDetachedFromVisualTree(e);
     }
