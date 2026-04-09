@@ -11,7 +11,10 @@ using System.Threading;
 
 namespace ImageBufferView.Avalonia;
 
-public partial class ImageBufferView : Control
+/// <summary>
+/// 将 ImageBufferView 按功能模块拆分为多个 partial 文件。
+/// 此文件为核心类型与部分静态属性（保留原逻辑）。
+/// </summary>
+public partial class ImageBufferView
 {
-    // 主类型文件已被拆分为功能模块的 partial 文件，具体实现分散在其他文件中。
 }
