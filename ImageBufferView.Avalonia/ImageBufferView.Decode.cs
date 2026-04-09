@@ -15,6 +15,20 @@ namespace ImageBufferView.Avalonia;
 /// </summary>
 public partial class ImageBufferView
 {
+
+    // 缓冲区复用相关字段（双缓冲方式避免竞态条件）
+    private WriteableBitmap? _backBuffer; // 后台缓冲区（用于写入）
+
+    private Stretch _cachedStretch;
+    private StretchDirection _cachedStretchDirection;
+    private bool _cachedEnableOptimization;
+    private PixelBufferFormat _cachedPixelBufferFormat;
+    private int _cachedRawImageWidth;
+    private int _cachedRawImageHeight;
+    private PixelSize _backBufferSize;
+    private PixelFormat _backBufferFormat;
+    private readonly Lock _backBufferLock = new();
+
     /// <summary>
     /// 默认采样选项：线性过滤 + 线性 Mipmap，等效于原 SKFilterQuality.Medium
     /// 适用于缩小场景，在质量和性能之间取得平衡
