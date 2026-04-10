@@ -1,7 +1,6 @@
 ﻿using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Interactivity;
-using ImageBufferView.Avalonia;
 using System;
 using System.Diagnostics;
 

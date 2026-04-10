@@ -64,12 +64,12 @@ public enum PixelBufferFormat
     /// <summary>
     /// RGB 101010x（每像素 4 字节：R10 G10 B10 X2，高动态范围不透明格式）
     /// </summary>
-    Rgb101010x,
+    Rgb101010X,
 
     /// <summary>
     /// BGR 101010x（每像素 4 字节：B10 G10 R10 X2，高动态范围不透明格式）
     /// </summary>
-    Bgr101010x,
+    Bgr101010X,
 
     /// <summary>
     /// sRGBA 8888（每像素 4 字节，sRGB 色彩空间）

@@ -2,11 +2,11 @@
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
-using Avalonia.Platform;
 using Avalonia.Reactive;
 using System;
 using System.Buffers;
 using System.Threading;
+// ReSharper disable MemberCanBePrivate.Global
 
 namespace ImageBufferView.Avalonia;
 
@@ -18,11 +18,11 @@ public partial class ImageBufferView : Control
     /// <summary>
     /// 并发解码信号量（默认基于 CPU 核心数，可通过静态/实例属性调整）
     /// </summary>
-    private static SemaphoreSlim SDecodeSemaphore =
+    private static SemaphoreSlim _sDecodeSemaphore =
         new(Environment.ProcessorCount, Environment.ProcessorCount);
 
     // 用于记录当前最大并发数的静态字段
-    private static int s_maxDecodeConcurrency = Environment.ProcessorCount;
+    private static int _sMaxDecodeConcurrency = Environment.ProcessorCount;
     private static readonly object SDecodeSemaphoreLock = new();
 
     /// <summary>
@@ -30,22 +30,22 @@ public partial class ImageBufferView : Control
     /// </summary>
     public static int MaxDecodeConcurrency
     {
-        get => Volatile.Read(ref s_maxDecodeConcurrency);
+        get => Volatile.Read(ref _sMaxDecodeConcurrency);
         set
         {
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
             lock (SDecodeSemaphoreLock)
             {
-                var old = Volatile.Read(ref s_maxDecodeConcurrency);
+                var old = Volatile.Read(ref _sMaxDecodeConcurrency);
                 if (old == value) return;
 
                 var newSem = new SemaphoreSlim(value, value);
-                var prev = Interlocked.Exchange(ref SDecodeSemaphore, newSem);
-                Volatile.Write(ref s_maxDecodeConcurrency, value);
+                var prev = Interlocked.Exchange(ref _sDecodeSemaphore, newSem);
+                Volatile.Write(ref _sMaxDecodeConcurrency, value);
 
                 try
                 {
-                    prev?.Dispose();
+                    prev.Dispose();
                 }
                 catch
                 {

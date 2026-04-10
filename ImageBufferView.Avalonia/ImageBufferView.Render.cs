@@ -1,9 +1,6 @@
 ﻿using Avalonia;
-using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
-using Avalonia.Platform;
-using Avalonia.Reactive;
 using Avalonia.Threading;
 using System;
 using System.Buffers;
@@ -48,14 +45,14 @@ public partial class ImageBufferView
                     return;
                 }
 
-                Bitmap? newBitmap = null;
+                Bitmap? newBitmap;
                 try
                 {
                     if (token.IsCancellationRequested)
                         return;
 
                     // 尝试获取信号量，超时则跳过此帧（避免积压）
-                    if (!SDecodeSemaphore.Wait(0, token))
+                    if (!_sDecodeSemaphore.Wait(0, token))
                         continue;
 
                     try
@@ -68,7 +65,7 @@ public partial class ImageBufferView
                     }
                     finally
                     {
-                        SDecodeSemaphore.Release();
+                        _sDecodeSemaphore.Release();
                     }
                 }
                 catch (OperationCanceledException)
@@ -243,15 +240,15 @@ public partial class ImageBufferView
                         var c = Math.Cos(rad);
                         var s = Math.Sin(rad);
 
-                        var L00 = c * sx;
-                        var L01 = -s * sy;
-                        var L10 = s * sx;
-                        var L11 = c * sy;
+                        var l00 = c * sx;
+                        var l01 = -s * sy;
+                        var l10 = s * sx;
+                        var l11 = c * sy;
 
-                        var offsetX = -L00 * center.X - L01 * center.Y + center.X;
-                        var offsetY = -L10 * center.X - L11 * center.Y + center.Y;
+                        var offsetX = -l00 * center.X - l01 * center.Y + center.X;
+                        var offsetY = -l10 * center.X - l11 * center.Y + center.Y;
 
-                        var m = new Matrix(L00, L10, L01, L11, offsetX, offsetY);
+                        var m = new Matrix(l00, l10, l01, l11, offsetX, offsetY);
 
                         using (drawingContext.PushClip(viewPort))
                         using (drawingContext.PushTransform(m))

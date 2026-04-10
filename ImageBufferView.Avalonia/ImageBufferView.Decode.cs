@@ -386,13 +386,13 @@ public partial class ImageBufferView
                 info = new SKImageInfo(width, height, SKColorType.Bgra1010102, SKAlphaType.Premul);
                 return true;
 
-            case PixelBufferFormat.Rgb101010x:
+            case PixelBufferFormat.Rgb101010X:
                 // 32bpp RGB 10-10-10-x，高动态范围不透明格式
                 expectedLen = checked(width * height * 4);
                 info = new SKImageInfo(width, height, SKColorType.Rgb101010x, SKAlphaType.Opaque);
                 return true;
 
-            case PixelBufferFormat.Bgr101010x:
+            case PixelBufferFormat.Bgr101010X:
                 // 32bpp BGR 10-10-10-x，高动态范围不透明格式
                 expectedLen = checked(width * height * 4);
                 info = new SKImageInfo(width, height, SKColorType.Bgr101010x, SKAlphaType.Opaque);
