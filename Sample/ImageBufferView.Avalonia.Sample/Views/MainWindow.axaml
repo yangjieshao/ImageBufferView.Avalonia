@@ -62,8 +62,7 @@
                     VerticalAlignment="Center"
                     Command="{Binding Clean}"
                     Content=" Clean"
-                    Cursor="Hand"
-                    IsVisible="{Binding ImageBuffer, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                    Cursor="Hand" />
 
                 <Button
                     Grid.Column="2"

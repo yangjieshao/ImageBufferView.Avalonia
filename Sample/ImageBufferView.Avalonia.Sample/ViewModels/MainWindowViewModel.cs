@@ -79,7 +79,7 @@ public class MainWindowViewModel : ViewModelBase
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
-    } = "Bgra32";
+    } = "Encoded (JPEG)";
 
     /// <summary>
     /// 待播放图片流缓存
@@ -150,10 +150,10 @@ public class MainWindowViewModel : ViewModelBase
         await LoadEncodedBuffer(token);
 
         // 默认启动 Bgra32
-        _useBgra32 = true;
-        PixelBufferFormat = PixelBufferFormat.Bgra32;
-        CurrentFormatName = "Bgra32 128x128";
-        RunBgra32Buffer(token);
+        _useBgra32 = false;
+        PixelBufferFormat = PixelBufferFormat.Encoded;
+        CurrentFormatName = "Encoded (JPEG)";
+        RunEncodedBuffer(token);
     }
 
     public void SwitchFormat()
@@ -182,7 +182,6 @@ public class MainWindowViewModel : ViewModelBase
             RunEncodedBuffer(token);
         }
     }
-
 
     private void RunBgra32Buffer(CancellationToken token)
     {
@@ -254,7 +253,9 @@ public class MainWindowViewModel : ViewModelBase
                     ImageBuffer = buffer;
                     try
                     {
-                        await Task.Delay(1, token);
+                        await Task.Delay(1000, token);
+                        ImageBuffer = default;
+                        await Task.Delay(1000, token);
                     }
                     catch (Exception)
                     {

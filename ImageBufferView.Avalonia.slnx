@@ -2,6 +2,9 @@
   <Folder Name="/Sample/">
     <Project Path="Sample/ImageBufferView.Avalonia.Sample/ImageBufferView.Avalonia.Sample.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ImageBufferView.Avalonia.Tests/ImageBufferView.Avalonia.Tests.csproj" />
+  </Folder>
   <Folder Name="/解决方案项/">
     <File Path=".gitignore" />
     <File Path=".mcp.json" />

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
@@ -8,6 +8,10 @@
 		<AssemblyName>$(MSBuildProjectName)</AssemblyName>
         <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     </PropertyGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="ImageBufferView.Avalonia.Tests" />
+    </ItemGroup>
 
     <ItemGroup>
 		<PackageReference Include="Avalonia" Version="12.0.0" />

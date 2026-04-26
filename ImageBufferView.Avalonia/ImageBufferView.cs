@@ -5,8 +5,11 @@ using Avalonia.Media.Imaging;
 using Avalonia.Reactive;
 using System;
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using System.Threading;
 // ReSharper disable MemberCanBePrivate.Global
+
+[assembly: InternalsVisibleTo("ImageBufferView.Avalonia.Tests")]
 
 namespace ImageBufferView.Avalonia;
 
