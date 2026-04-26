@@ -12,7 +12,7 @@ namespace ImageBufferView.Avalonia.Tests.DecodePipeline;
 /// <summary>
 /// 原始像素格式解码管线的集成测试。
 /// </summary>
-public class RawPixelDecodeTests
+public class RawPixelDecodeTests : IDisposable
 {
     private ImageBufferView? _view;
     private Window? _visualTreeHandle;
@@ -123,5 +123,11 @@ public class RawPixelDecodeTests
         Dispatcher.UIThread.RunJobs();
 
         Assert.Null(_view.Bitmap);
+    }
+
+    public void Dispose()
+    {
+        _visualTreeHandle?.Close();
+        _visualTreeHandle = null;
     }
 }

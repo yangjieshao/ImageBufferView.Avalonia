@@ -21,19 +21,13 @@ public  class ScaleRawToSkBitmapTests
         const int dstH = 16;
         var buffer = new byte[srcW * srcH * 4];
 
-        var result = ImageBufferView.ScaleRawToSkBitmap(buffer, buffer.Length, PixelBufferFormat.Bgra32, srcW, srcH, dstW, dstH);
+        using var result = ImageBufferView.ScaleRawToSkBitmap(buffer, buffer.Length, PixelBufferFormat.Bgra32, srcW, srcH, dstW, dstH);
         Assert.NotNull(result);
-        try
-        {
-            Assert.Equal(dstW, result.Width);
-            Assert.Equal(dstH, result.Height);
-            Assert.Equal(SKColorType.Bgra8888, result.ColorType);
-            Assert.Equal(SKAlphaType.Premul, result.AlphaType);
-        }
-        finally
-        {
-            result?.Dispose();
-        }
+        
+        Assert.Equal(dstW, result.Width);
+        Assert.Equal(dstH, result.Height);
+        Assert.Equal(SKColorType.Bgra8888, result.ColorType);
+        Assert.Equal(SKAlphaType.Premul, result.AlphaType);
     }
 
     /// <summary>
@@ -48,17 +42,11 @@ public  class ScaleRawToSkBitmapTests
         const int dstH = 16;
         var buffer = new byte[srcW * srcH * 4];
 
-        var result = ImageBufferView.ScaleRawToSkBitmap(buffer, buffer.Length, PixelBufferFormat.Bgra32, srcW, srcH, dstW, dstH);
+        using var result = ImageBufferView.ScaleRawToSkBitmap(buffer, buffer.Length, PixelBufferFormat.Bgra32, srcW, srcH, dstW, dstH);
         Assert.NotNull(result);
-        try
-        {
-            Assert.Equal(dstW, result.Width);
-            Assert.Equal(dstH, result.Height);
-        }
-        finally
-        {
-            result?.Dispose();
-        }
+        
+        Assert.Equal(dstW, result.Width);
+        Assert.Equal(dstH, result.Height);
     }
 
     /// <summary>
@@ -122,19 +110,13 @@ public  class ScaleRawToSkBitmapTests
         const int dstH = 8;
         var buffer = new byte[srcW * srcH]; // 1 byte/pixel
 
-        var result = ImageBufferView.ScaleRawToSkBitmap(buffer, buffer.Length, PixelBufferFormat.Gray8, srcW, srcH, dstW, dstH);
+        using var result = ImageBufferView.ScaleRawToSkBitmap(buffer, buffer.Length, PixelBufferFormat.Gray8, srcW, srcH, dstW, dstH);
         Assert.NotNull(result);
-        try
-        {
-            Assert.Equal(dstW, result.Width);
-            Assert.Equal(dstH, result.Height);
-            // 目标始终为 Bgra8888
-            Assert.Equal(SKColorType.Bgra8888, result.ColorType);
-        }
-        finally
-        {
-            result?.Dispose();
-        }
+        
+        Assert.Equal(dstW, result.Width);
+        Assert.Equal(dstH, result.Height);
+        // 目标始终为 Bgra8888
+        Assert.Equal(SKColorType.Bgra8888, result.ColorType);
     }
 
     /// <summary>
@@ -149,16 +131,10 @@ public  class ScaleRawToSkBitmapTests
         const int dstH = 8;
         var buffer = new byte[srcW * srcH * 2];
 
-        var result = ImageBufferView.ScaleRawToSkBitmap(buffer, buffer.Length, PixelBufferFormat.Rgb565, srcW, srcH, dstW, dstH);
+        using var result = ImageBufferView.ScaleRawToSkBitmap(buffer, buffer.Length, PixelBufferFormat.Rgb565, srcW, srcH, dstW, dstH);
         Assert.NotNull(result);
-        try
-        {
-            Assert.Equal(dstW, result.Width);
-            Assert.Equal(SKColorType.Bgra8888, result.ColorType);
-        }
-        finally
-        {
-            result?.Dispose();
-        }
+        
+        Assert.Equal(dstW, result.Width);
+        Assert.Equal(SKColorType.Bgra8888, result.ColorType);
     }
 }

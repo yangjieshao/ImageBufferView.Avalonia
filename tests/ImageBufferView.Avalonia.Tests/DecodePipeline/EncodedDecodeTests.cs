@@ -13,7 +13,7 @@ namespace ImageBufferView.Avalonia.Tests.DecodePipeline;
 /// <summary>
 /// 编码格式（JPEG）解码管线的集成测试。
 /// </summary>
-public class EncodedDecodeTests
+public class EncodedDecodeTests : IDisposable
 {
     private ImageBufferView? _view;
     private Window? _visualTreeHandle;
@@ -139,5 +139,11 @@ public class EncodedDecodeTests
         // 给 UI 更新后的后续处理留出时间
         Thread.Sleep(50);
         Dispatcher.UIThread.RunJobs();
+    }
+
+    public void Dispose()
+    {
+        _visualTreeHandle?.Close();
+        _visualTreeHandle = null;
     }
 }

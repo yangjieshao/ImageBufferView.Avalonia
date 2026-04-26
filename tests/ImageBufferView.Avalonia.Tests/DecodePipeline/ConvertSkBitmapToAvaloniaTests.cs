@@ -16,7 +16,7 @@ namespace ImageBufferView.Avalonia.Tests.DecodePipeline;
 /// <see cref="ImageBufferView.ConvertSkBitmapToAvaloniaWithReuse"/> 的集成测试，
 /// 覆盖 SKBitmap→WriteableBitmap 转换及后台缓冲复用。
 /// </summary>
-public class ConvertSkBitmapToAvaloniaTests
+public class ConvertSkBitmapToAvaloniaTests : IDisposable
 {
     private ImageBufferView? _view;
     private Window? _visualTreeHandle;
@@ -42,7 +42,7 @@ public class ConvertSkBitmapToAvaloniaTests
         // 验证 API 契约：非空、尺寸正确
         using var wb = _view.ConvertSkBitmapToAvaloniaWithReuse(skBitmap, false);
         Assert.NotNull(wb);
-        Assert.Equal(w, wb!.PixelSize.Width);
+        Assert.Equal(w, wb.PixelSize.Width);
         Assert.Equal(h, wb.PixelSize.Height);
 
         // 验证像素数据：通过内部辅助方法在同一 Lock 周期内完成写入与验证
@@ -62,7 +62,7 @@ public class ConvertSkBitmapToAvaloniaTests
 
         using var wb = _view.ConvertSkBitmapToAvaloniaWithReuse(skBitmap, false);
         Assert.NotNull(wb);
-        Assert.Equal(w, wb!.PixelSize.Width);
+        Assert.Equal(w, wb.PixelSize.Width);
     }
 
     /// <summary>
@@ -78,7 +78,7 @@ public class ConvertSkBitmapToAvaloniaTests
 
         using var wb = _view.ConvertSkBitmapToAvaloniaWithReuse(skBitmap, false);
         Assert.NotNull(wb);
-        Assert.Equal(w, wb!.PixelSize.Width);
+        Assert.Equal(w, wb.PixelSize.Width);
     }
 
     /// <summary>
@@ -102,9 +102,6 @@ public class ConvertSkBitmapToAvaloniaTests
 
         using var wb1 = _view.ConvertSkBitmapToAvaloniaWithReuse(skBitmap1, true);
         Assert.NotNull(wb1);
-
-        // 第一次转换后 Dispose 应回收
-        wb1!.Dispose();
 
         // 给 UI 线程处理回收任务的时间
         Dispatcher.UIThread.RunJobs();
@@ -173,5 +170,11 @@ public class ConvertSkBitmapToAvaloniaTests
         {
             convertedBitmap?.Dispose();
         }
+    }
+
+    public void Dispose()
+    {
+        _visualTreeHandle?.Close();
+        _visualTreeHandle = null;
     }
 }

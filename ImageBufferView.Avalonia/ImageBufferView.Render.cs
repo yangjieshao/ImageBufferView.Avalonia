@@ -179,7 +179,7 @@ public partial class ImageBufferView
                 var flipH = FlipHorizontal;
                 var flipV = FlipVertical;
 
-                // Fast path: no rotation nor flip -> original drawing logic
+                // 快速路径：无旋转无翻转 -> 原始绘制逻辑
                 if (rotation == ImageRotation.Rotate0 && !flipH && !flipV)
                 {
                     var sourceSize = SourceSize;
@@ -199,8 +199,8 @@ public partial class ImageBufferView
                 }
                 else
                 {
-                    // Transform path: use original source size for layout to avoid pre-scale feedback jitter
-                    var sourceSize = SourceSize; // bitmap pixel dimensions for sourceRect
+                    // Transform 路径：使用原始源尺寸布局以避免预缩放反馈抖动
+                    var sourceSize = SourceSize; // 位图像素尺寸，用于 sourceRect
                     var origSize = _originalSourceSize is { Width: > 0, Height: > 0 } ? _originalSourceSize : sourceSize;
                     var isSwapped = rotation is ImageRotation.Rotate90 or ImageRotation.Rotate270;
                     var layoutSize = isSwapped ? new Size(origSize.Height, origSize.Width) : origSize;
@@ -209,19 +209,19 @@ public partial class ImageBufferView
 
                     if (scale is { X: > 0.0, Y: > 0.0 })
                     {
-                        // fullDest: the final on-screen rect after rotation (may exceed viewport for UniformToFill)
+                        // fullDest：旋转后最终屏幕上的矩形（UniformToFill 时可能超出视口）
                         var fullDest = viewPort.CenterRect(new Rect(layoutSize * scale));
                         var center = fullDest.Center;
 
-                        // drawRect: the rect we actually draw the bitmap into BEFORE rotation.
-                        // For 90/270 the bitmap is landscape but the layout is portrait (or vice-versa),
-                        // so swap width/height so the bitmap keeps its native aspect ratio.
+                        // drawRect：旋转前实际绘制位图的矩形。
+                        // 90°/270° 时位图为横屏但布局为竖屏（反之亦然），
+                        // 因此交换宽高以保持位图原始宽高比。
                         var drawRect = isSwapped
                             ? new Rect(center.X - fullDest.Height / 2, center.Y - fullDest.Width / 2,
                                        fullDest.Height, fullDest.Width)
                             : fullDest;
 
-                        // sourceRect covers the full bitmap in its original (un-rotated) pixel space
+                        // sourceRect 覆盖原始（未旋转）像素空间中的完整位图
                         var sourceRect = new Rect(sourceSize);
 
                         var sx = flipH ? -1.0 : 1.0;
@@ -235,7 +235,7 @@ public partial class ImageBufferView
                             _ => 0.0
                         };
 
-                        // Compose matrix: Scale(flip) then Rotate, all about center
+                        // 组合矩阵：先缩放（翻转）再旋转，均以中心为原点
                         var rad = angle * Math.PI / 180.0;
                         var c = Math.Cos(rad);
                         var s = Math.Sin(rad);

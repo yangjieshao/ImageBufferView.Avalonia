@@ -26,34 +26,46 @@ public partial class ImageBufferView : Control
 
     // 用于记录当前最大并发数的静态字段
     private static int _sMaxDecodeConcurrency = Environment.ProcessorCount;
-    private static readonly object SDecodeSemaphoreLock = new();
+    private static readonly SemaphoreSlim SMaxDecodeConcurrencySlim =
+        new(1, 1);
 
     /// <summary>
     /// 全局默认的最大并发解码数。设置此值会重新创建用于解码的信号量（线程安全）。
     /// </summary>
     public static int MaxDecodeConcurrency
     {
-        get => Volatile.Read(ref _sMaxDecodeConcurrency);
+        get
+        {
+            SMaxDecodeConcurrencySlim.Wait();
+            try
+            {
+                return _sMaxDecodeConcurrency;
+            }
+            finally
+            {
+                SMaxDecodeConcurrencySlim.Release();
+            }
+        }
         set
         {
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
-            lock (SDecodeSemaphoreLock)
+            SMaxDecodeConcurrencySlim.Wait();
+            try
             {
-                var old = Volatile.Read(ref _sMaxDecodeConcurrency);
-                if (old == value) return;
+                if (_sMaxDecodeConcurrency == value) return;
 
                 var newSem = new SemaphoreSlim(value, value);
                 var prev = Interlocked.Exchange(ref _sDecodeSemaphore, newSem);
-                Volatile.Write(ref _sMaxDecodeConcurrency, value);
-
-                try
-                {
-                    prev.Dispose();
-                }
-                catch
-                {
-                    // 忽略 Dispose 过程中的异常，保证健壮性
-                }
+                _sMaxDecodeConcurrency = value;
+                prev.Dispose();
+            }
+            catch 
+            {
+                // 在极端情况下可能会有并发访问导致的异常，这里捕获并忽略，保持旧的信号量继续工作
+            }
+            finally
+            {
+                SMaxDecodeConcurrencySlim.Release();
             }
         }
     }
