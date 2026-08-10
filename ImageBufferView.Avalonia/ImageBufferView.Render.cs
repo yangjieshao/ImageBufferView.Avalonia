@@ -25,9 +25,12 @@ public partial class ImageBufferView
     }
 
     /// <summary>
-    /// 解码循环：从最新缓冲读取、限制并发、解码并在 UI 线程发布 Bitmap 更新。
-    /// 使用 try/finally 确保所有退出路径（含取消、异常）都重置 _decoding 标志，
-    /// 并检查 lost-wakeup 以防止新数据被遗漏。
+    /// 解码循环：先获取全局解码信号量，再消费最新缓冲进行解码，最后在 UI 线程发布 Bitmap。
+    /// 修复要点：必须在获取信号量 **之后** 才通过 Interlocked.Exchange 从 _latestBuffer 取走
+    /// buffer——若先取 buffer 再抢信号量（原实现），信号量满时 continue 会直接把 buffer
+    /// 归还到 ArrayPool 导致该帧永久丢失（_latestBuffer 已 null，lost-wakeup 也救不回来）。
+    /// 改为先 Wait(1000) 阻塞等待信号量（最多 1 秒），拿到后再 Exchange 消费，确保
+    /// 即使并发高于 CPU 核心数（如 32 路相机画面同时刷新），每帧也都被解码，不会丢帧。
     /// </summary>
     private void DecodeLoop()
     {
@@ -37,36 +40,74 @@ public partial class ImageBufferView
         {
             while (_isAttached && !token.IsCancellationRequested)
             {
-                var buffer = Interlocked.Exchange(ref _latestBuffer, null);
-                var length = Interlocked.Exchange(ref _latestBufferLength, 0);
-
-                if (buffer is null || length == 0)
+                // ① 先检查是否有待解码数据（只读，不消费）
+                if (Volatile.Read(ref _latestBuffer) is null ||
+                    Volatile.Read(ref _latestBufferLength) == 0)
                 {
                     return;
                 }
 
-                Bitmap? newBitmap;
+                // ② 先抢全局信号量（最多等 1 秒）；拿不到就等，不消费 buffer
+                if (!_sDecodeSemaphore.Wait(1000, token))
+                    continue;
+
                 try
                 {
                     if (token.IsCancellationRequested)
                         return;
 
-                    // 尝试获取信号量，超时则跳过此帧（避免积压）
-                    if (!_sDecodeSemaphore.Wait(0, token))
+                    // ③ 拿到信号量后再消费 buffer（Exchange 置 null 并取回）
+                    var buffer = Interlocked.Exchange(ref _latestBuffer, null);
+                    var length = Interlocked.Exchange(ref _latestBufferLength, 0);
+
+                    if (buffer is null || length == 0)
                         continue;
 
+                    Bitmap? newBitmap = null;
                     try
                     {
-                        if (token.IsCancellationRequested)
-                            return;
-
-                        // 使用 SkiaSharp 解码并预缩放
                         newBitmap = DecodeAndScaleBitmap(buffer, length);
                     }
                     finally
                     {
-                        _sDecodeSemaphore.Release();
+                        // buffer 统一在此处归还，避免双归还和泄漏
+                        ArrayPool<byte>.Shared.Return(buffer);
                     }
+
+                    if (newBitmap is null)
+                        continue;
+
+                    if (!_isAttached || token.IsCancellationRequested)
+                    {
+                        newBitmap.Dispose();
+                        return;
+                    }
+
+                    var capturedToken = token;
+                    var bitmapToSet = newBitmap;
+
+                    // 使用 Post 确保 Bitmap 及时更新（GPU 渲染更流畅）
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        if (!_isAttached || capturedToken.IsCancellationRequested)
+                        {
+                            bitmapToSet?.Dispose();
+                            return;
+                        }
+
+                        var oldBitmap = Bitmap;
+                        Bitmap = bitmapToSet;
+
+                        // 将旧 Bitmap 回收到后台缓冲区（如果尺寸匹配）
+                        // 并避免释放来自 SourceView 的共享 Bitmap（比较引用）
+                        if (oldBitmap is not null && !ReferenceEquals(oldBitmap, SourceView?.Bitmap))
+                        {
+                            if (oldBitmap is WriteableBitmap oldWriteable)
+                                RecycleToBackBuffer(oldWriteable);
+                            else
+                                oldBitmap.Dispose();
+                        }
+                    }, DispatcherPriority.Render);
                 }
                 catch (OperationCanceledException)
                 {
@@ -78,44 +119,8 @@ public partial class ImageBufferView
                 }
                 finally
                 {
-                    // buffer 统一在此处归还，避免双归还和泄漏
-                    ArrayPool<byte>.Shared.Return(buffer);
+                    _sDecodeSemaphore.Release();
                 }
-
-                if (newBitmap is null)
-                    continue;
-
-                if (!_isAttached || token.IsCancellationRequested)
-                {
-                    newBitmap.Dispose();
-                    return;
-                }
-
-                var capturedToken = token;
-                var bitmapToSet = newBitmap;
-
-                // 使用 Post 确保 Bitmap 及时更新（GPU 渲染更流畅）
-                Dispatcher.UIThread.Post(() =>
-                {
-                    if (!_isAttached || capturedToken.IsCancellationRequested)
-                    {
-                        bitmapToSet?.Dispose();
-                        return;
-                    }
-
-                    var oldBitmap = Bitmap;
-                    Bitmap = bitmapToSet;
-
-                    // 将旧 Bitmap 回收到后台缓冲区（如果尺寸匹配）
-                    // 并避免释放来自 SourceView 的共享 Bitmap（比较引用）
-                    if (oldBitmap is not null && !ReferenceEquals(oldBitmap, SourceView?.Bitmap))
-                    {
-                        if (oldBitmap is WriteableBitmap oldWriteable)
-                            RecycleToBackBuffer(oldWriteable);
-                        else
-                            oldBitmap.Dispose();
-                    }
-                }, DispatcherPriority.Render);
             }
         }
         finally
@@ -124,7 +129,7 @@ public partial class ImageBufferView
             Volatile.Write(ref _decoding, 0);
 
             // lost-wakeup 检查：如果有新数据到达但 DecodeLoop 已退出，重新排队
-            if (_isAttached && _latestBuffer is not null &&
+            if (_isAttached && Volatile.Read(ref _latestBuffer) is not null &&
                 Interlocked.CompareExchange(ref _decoding, 1, 0) == 0)
             {
                 ThreadPool.UnsafeQueueUserWorkItem(static ctrl => ctrl.DecodeLoop(), this, preferLocal: false);
@@ -279,6 +284,29 @@ public partial class ImageBufferView
         if (ImageBuffer is { Array: not null, Count: > 0 } buffer)
         {
             TryStartDecode(buffer);
+        }
+    }
+
+    /// <summary>
+    /// DataContext 变化兜底：当 StyledProperty&lt;ArraySegment&lt;byte&gt;?&gt; 被 Avalonia 等值短路
+    /// （同一 byte[] 引用、ItemsControl 容器复用）导致 ImageBufferChanged 未触发时，
+    /// 主动补一次 TryStartDecode，确保图片正常显示。
+    /// </summary>
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+
+        if (!_isAttached)
+            return;
+
+        if (ImageBuffer is { Array: not null, Count: > 0 })
+        {
+            if (!_decodeRequested)
+            {
+                TryStartDecode(ImageBuffer.Value);
+            }
+
+            _decodeRequested = false;
         }
     }
 

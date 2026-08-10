@@ -357,6 +357,11 @@ public partial class ImageBufferView : Control
     // 原始（未预缩放）源图片尺寸，用于布局计算以避免预缩放 ↔ 布局反馈振荡
     private Size _originalSourceSize;
 
+    // 跟踪 ImageBufferChanged 在最近一次 DataContext 切换中是否被触发过。
+    // 当 StyledProperty<ArraySegment<byte>?> 等值短路跳过 PropertyChanged 时，
+    // OnDataContextChanged 会据此判断是否需要兜底触发解码。
+    private bool _decodeRequested;
+
     #endregion
 
     /// <summary>
@@ -413,6 +418,7 @@ public partial class ImageBufferView : Control
 
         if (e.NewValue is ArraySegment<byte> { Array: not null, Count: > 0 } buffer)
         {
+            sender._decodeRequested = true;
             sender.TryStartDecode(buffer);
         }
         else
